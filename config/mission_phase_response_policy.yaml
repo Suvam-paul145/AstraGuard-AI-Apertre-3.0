@@ -1,0 +1,200 @@
+# Mission Phase Response Policy Configuration
+# 
+# This file defines fault response policies for each mission phase.
+# Each phase has different operational constraints and risk tolerances.
+#
+# Policy structure:
+#   phases:
+#     <PHASE_NAME>:
+#       description: Human-readable phase description
+#       allowed_actions: List of actions permitted in this phase
+#       forbidden_actions: List of actions explicitly prohibited
+#       severity_thresholds: Maps severity levels to action requirements
+#       threshold_multiplier: Multiplier for telemetry thresholds (1.0 = nominal)
+#       escalation_rules: When to escalate to SAFE_MODE
+#
+# Action types:
+#   LOG_EVENT: Log the anomaly to system logs
+#   MONITOR: Continuous monitoring without action
+#   ALERT_ONLY: Alert operators but don't take automated action
+#   RESTART_SERVICE: Restart affected service/subsystem
+#   THERMAL_REGULATION: Adjust heater/cooler duty cycles
+#   POWER_LOAD_BALANCING: Balance power distribution
+#   STABILIZATION: Fire thrusters or adjust reaction wheels
+#   SAFE_MODE: Emergency transition to minimal power state
+#   PING_GROUND: Attempt communication with ground station
+#   DEPLOY_SOLAR_PANELS: Deploy solar panels (not reversible)
+#   FIRE_THRUSTERS: Execute thruster firing
+#   PAYLOAD_OPERATIONS: Enable payload operations
+#   HIGH_POWER_TRANSMISSION: High-power data transmission
+#   ISOLATE_SUBSYSTEM: Isolate failing subsystem from others
+#   ENTER_SAFE_MODE: Transition to SAFE_MODE
+
+phases:
+  LAUNCH:
+    description: "Rocket ascent and orbital insertion phase. Highly constrained operations."
+    allowed_actions:
+      - "LOG_EVENT"
+      - "MONITOR"
+      - "ALERT_ONLY"
+    forbidden_actions:
+      - "RESTART_SERVICE"
+      - "FIRE_THRUSTERS"
+      - "DEPLOY_SOLAR_PANELS"
+      - "THERMAL_REGULATION"
+      - "POWER_LOAD_BALANCING"
+      - "STABILIZATION"
+      - "PAYLOAD_OPERATIONS"
+      - "HIGH_POWER_TRANSMISSION"
+      - "ISOLATE_SUBSYSTEM"
+    threshold_multiplier: 2.0  # Higher tolerance for vibration and noise during launch
+    severity_thresholds:
+      "CRITICAL": "ESCALATE_SAFE_MODE"
+      "HIGH": "ALERT_OPERATORS"
+      "MEDIUM": "LOG_ONLY"
+      "LOW": "LOG_ONLY"
+    escalation_rules:
+      - condition: "severity >= CRITICAL"
+        action: "ENTER_SAFE_MODE"
+        justification: "Critical faults during launch require minimal active state"
+
+  DEPLOYMENT:
+    description: "Initial system startup and stabilization. Limited automated actions."
+    allowed_actions:
+      - "LOG_EVENT"
+      - "MONITOR"
+      - "ALERT_ONLY"
+      - "PING_GROUND"
+    forbidden_actions:
+      - "FIRE_THRUSTERS"
+      - "PAYLOAD_OPERATIONS"
+      - "HIGH_POWER_TRANSMISSION"
+      - "ISOLATE_SUBSYSTEM"
+    threshold_multiplier: 1.5  # Moderate tolerance during stabilization
+    severity_thresholds:
+      "CRITICAL": "ESCALATE_SAFE_MODE"
+      "HIGH": "ALERT_OPERATORS"
+      "MEDIUM": "LOG_ONLY"
+      "LOW": "LOG_ONLY"
+    escalation_rules:
+      - condition: "severity >= CRITICAL"
+        action: "ENTER_SAFE_MODE"
+        justification: "Critical faults during deployment require safe state"
+      - condition: "severity >= HIGH and recurrence >= 2"
+        action: "ENTER_SAFE_MODE"
+        justification: "Repeated high-severity faults indicate system problems"
+
+  NOMINAL_OPS:
+    description: "Standard mission operations. Full automated response capabilities."
+    allowed_actions:
+      - "LOG_EVENT"
+      - "MONITOR"
+      - "ALERT_ONLY"
+      - "RESTART_SERVICE"
+      - "THERMAL_REGULATION"
+      - "POWER_LOAD_BALANCING"
+      - "STABILIZATION"
+      - "PING_GROUND"
+      - "ISOLATE_SUBSYSTEM"
+    forbidden_actions: []  # No explicit restrictions during nominal ops
+    threshold_multiplier: 1.0  # Standard thresholds
+    severity_thresholds:
+      "CRITICAL": "ESCALATE_SAFE_MODE"
+      "HIGH": "CONTROLLED_ACTION"
+      "MEDIUM": "CONTROLLED_ACTION"
+      "LOW": "LOG_ONLY"
+    escalation_rules:
+      - condition: "severity >= CRITICAL"
+        action: "ENTER_SAFE_MODE"
+        justification: "Critical faults always escalate to safe state"
+      - condition: "severity >= HIGH and recurrence >= 3"
+        action: "ENTER_SAFE_MODE"
+        justification: "Persistent high-severity faults indicate system degradation"
+      - condition: "simultaneous_faults >= 2"
+        action: "ENTER_SAFE_MODE"
+        justification: "Multiple system failures require safe mode"
+
+  PAYLOAD_OPS:
+    description: "Specialized payload mission operations. Balanced constraints."
+    allowed_actions:
+      - "LOG_EVENT"
+      - "MONITOR"
+      - "ALERT_ONLY"
+      - "RESTART_SERVICE"
+      - "THERMAL_REGULATION"
+      - "POWER_LOAD_BALANCING"
+      - "PAYLOAD_OPERATIONS"
+      - "HIGH_POWER_TRANSMISSION"
+      - "PING_GROUND"
+    forbidden_actions:
+      - "FIRE_THRUSTERS"
+      - "STABILIZATION"
+      - "ISOLATE_SUBSYSTEM"
+    threshold_multiplier: 1.0
+    severity_thresholds:
+      "CRITICAL": "ESCALATE_SAFE_MODE"
+      "HIGH": "CONTROLLED_ACTION"
+      "MEDIUM": "CONTROLLED_ACTION"
+      "LOW": "LOG_ONLY"
+    escalation_rules:
+      - condition: "severity >= CRITICAL"
+        action: "ENTER_SAFE_MODE"
+        justification: "Critical faults interrupt payload operations"
+      - condition: "payload_subsystem_fault and severity >= HIGH"
+        action: "ENTER_SAFE_MODE"
+        justification: "Payload subsystem failures risk data and hardware"
+      - condition: "power_fault and severity >= HIGH"
+        action: "ENTER_SAFE_MODE"
+        justification: "Power failures prevent payload operations and science data transmission"
+
+  SAFE_MODE:
+    description: "Minimal power state for survival. Minimal automated actions."
+    allowed_actions:
+      - "LOG_EVENT"
+      - "MONITOR"
+      - "ALERT_ONLY"
+      - "PING_GROUND"
+    forbidden_actions:
+      - "RESTART_SERVICE"
+      - "FIRE_THRUSTERS"
+      - "THERMAL_REGULATION"
+      - "POWER_LOAD_BALANCING"
+      - "STABILIZATION"
+      - "PAYLOAD_OPERATIONS"
+      - "HIGH_POWER_TRANSMISSION"
+      - "DEPLOY_SOLAR_PANELS"
+      - "ISOLATE_SUBSYSTEM"
+    threshold_multiplier: 0.8  # More sensitive thresholds in safe mode to catch new problems
+    severity_thresholds:
+      "CRITICAL": "LOG_ONLY"
+      "HIGH": "LOG_ONLY"
+      "MEDIUM": "LOG_ONLY"
+      "LOW": "LOG_ONLY"
+    escalation_rules:
+      - condition: "always"
+        action: "NO_ESCALATION"
+        justification: "Already in safe mode; no further escalation possible"
+
+# Global configuration
+global:
+  # Default action when no policy matches
+  default_action: "LOG_ONLY"
+  
+  # Confidence thresholds
+  min_confidence_for_action: 0.7
+  min_confidence_for_escalation: 0.8
+  
+  # Recurrence detection
+  recurrence_window_seconds: 3600  # 1 hour
+  recurrence_threshold: 2  # Number of occurrences to consider recurrent
+  
+  # Anomaly classification timeout
+  anomaly_classification_timeout_ms: 500
+  
+  # Logging configuration
+  log_all_decisions: true
+  log_decisions_with_confidence: 0.5  # Log decisions above this confidence
+  
+  # Simulation mode (when enabled, allows phase transitions via UI)
+  enable_simulation_mode: true
+  simulation_mode_requires_env_var: "ASTRAGUARD_SIMULATION_MODE"

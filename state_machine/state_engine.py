@@ -1,7 +1,12 @@
 from enum import Enum
-from typing import Dict, Any
+from typing import Dict, Any, Optional
+from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)
 
 class SystemState(Enum):
+    """Represents the operational state of the CubeSat system."""
     NORMAL = "NORMAL"
     ANOMALY_DETECTED = "ANOMALY_DETECTED"
     FAULT_DETECTED = "FAULT_DETECTED"
@@ -9,22 +14,102 @@ class SystemState(Enum):
     SAFE_MODE = "SAFE_MODE"
 
 class MissionPhase(Enum):
+    """
+    Mission phases for CubeSat operations.
+    
+    Each phase has specific operational constraints and fault response policies:
+    - LAUNCH: Rocket ascent and orbital insertion. Highly constrained.
+    - DEPLOYMENT: Initial system startup and stabilization. Limited actions.
+    - NOMINAL_OPS: Standard mission operations. Full capabilities.
+    - PAYLOAD_OPS: Specialized payload mission operations. Custom constraints.
+    - SAFE_MODE: Minimal power state for survival. Minimal automated actions.
+    """
     LAUNCH = "LAUNCH"
     DEPLOYMENT = "DEPLOYMENT"
     NOMINAL_OPS = "NOMINAL_OPS"
+    PAYLOAD_OPS = "PAYLOAD_OPS"
     SAFE_MODE = "SAFE_MODE"
 
 class StateMachine:
+    """
+    Manages system state and mission phase transitions.
+    
+    Responsibilities:
+    - Track current system state (NORMAL, ANOMALY_DETECTED, FAULT_DETECTED, etc.)
+    - Track mission phase (LAUNCH, DEPLOYMENT, NOMINAL_OPS, PAYLOAD_OPS, SAFE_MODE)
+    - Provide APIs for querying and updating both state and phase
+    - Manage phase transitions based on mission events
+    """
+    
+    # Valid phase transitions
+    PHASE_TRANSITIONS = {
+        MissionPhase.LAUNCH: [MissionPhase.DEPLOYMENT, MissionPhase.SAFE_MODE],
+        MissionPhase.DEPLOYMENT: [MissionPhase.NOMINAL_OPS, MissionPhase.SAFE_MODE],
+        MissionPhase.NOMINAL_OPS: [MissionPhase.PAYLOAD_OPS, MissionPhase.SAFE_MODE],
+        MissionPhase.PAYLOAD_OPS: [MissionPhase.NOMINAL_OPS, MissionPhase.SAFE_MODE],
+        MissionPhase.SAFE_MODE: [MissionPhase.NOMINAL_OPS, MissionPhase.DEPLOYMENT, MissionPhase.LAUNCH],
+    }
+    
     def __init__(self):
         self.current_state = SystemState.NORMAL
         self.current_phase = MissionPhase.NOMINAL_OPS
+        self.phase_start_time = datetime.now()
+        self.phase_history = [(MissionPhase.NOMINAL_OPS, datetime.now())]
         self.recovery_start_time = None
         self.recovery_duration = 5  # seconds (simulated)
         self.recovery_steps = 0
     
-    def set_phase(self, phase: MissionPhase):
-        """Update the mission phase."""
+    def get_current_phase(self) -> MissionPhase:
+        """Get the current mission phase."""
+        return self.current_phase
+    
+    def get_current_state(self) -> SystemState:
+        """Get the current system state."""
+        return self.current_state
+    
+    def set_phase(self, phase: MissionPhase) -> Dict[str, Any]:
+        """
+        Update the mission phase with validation.
+        
+        Args:
+            phase: Target MissionPhase
+            
+        Returns:
+            Dict with previous_phase, new_phase, success, and message
+            
+        Raises:
+            ValueError: If phase transition is invalid
+        """
+        if not isinstance(phase, MissionPhase):
+            raise ValueError(f"Invalid phase type: {type(phase)}")
+        
+        if self.current_phase == phase:
+            return {
+                "success": True,
+                "previous_phase": self.current_phase.value,
+                "new_phase": phase.value,
+                "message": "Already in target phase"
+            }
+        
+        # Check if transition is valid
+        if phase not in self.PHASE_TRANSITIONS.get(self.current_phase, []):
+            raise ValueError(
+                f"Invalid phase transition: {self.current_phase.value} → {phase.value}"
+            )
+        
+        previous_phase = self.current_phase
         self.current_phase = phase
+        self.phase_start_time = datetime.now()
+        self.phase_history.append((phase, datetime.now()))
+        
+        logger.info(f"Mission phase transitioned: {previous_phase.value} → {phase.value}")
+        
+        return {
+            "success": True,
+            "previous_phase": previous_phase.value,
+            "new_phase": phase.value,
+            "message": f"Transitioned from {previous_phase.value} to {phase.value}"
+        }
 
     def process_fault(self, fault_type: str, telemetry: Dict[str, Any]) -> Dict[str, str]:
         """Process a detected fault and transition state."""
@@ -67,4 +152,46 @@ class StateMachine:
             "previous_state": previous_state,
             "new_state": self.current_state.value,
             "action": "resume"
+        }    
+    def get_phase_history(self) -> list:
+        """Get the history of mission phase transitions."""
+        return [(phase.value, timestamp) for phase, timestamp in self.phase_history]
+    
+    def force_safe_mode(self) -> Dict[str, Any]:
+        """
+        Forcibly transition to SAFE_MODE (emergency procedure).
+        Always allowed regardless of current phase.
+        """
+        previous_phase = self.current_phase
+        self.current_phase = MissionPhase.SAFE_MODE
+        self.phase_start_time = datetime.now()
+        self.phase_history.append((MissionPhase.SAFE_MODE, datetime.now()))
+        
+        logger.warning(f"Forced transition to SAFE_MODE from {previous_phase.value}")
+        
+        return {
+            "success": True,
+            "previous_phase": previous_phase.value,
+            "new_phase": MissionPhase.SAFE_MODE.value,
+            "message": "Emergency transition to SAFE_MODE executed",
+            "forced": True
         }
+    
+    def get_phase_description(self, phase: Optional[MissionPhase] = None) -> str:
+        """Get human-readable description of a mission phase."""
+        if phase is None:
+            phase = self.current_phase
+        
+        descriptions = {
+            MissionPhase.LAUNCH: "Rocket ascent and orbital insertion. Highly constrained, minimal automated actions.",
+            MissionPhase.DEPLOYMENT: "Initial system startup and stabilization. Limited automated responses.",
+            MissionPhase.NOMINAL_OPS: "Standard mission operations. Full automated response capabilities.",
+            MissionPhase.PAYLOAD_OPS: "Specialized payload mission operations. Balanced constraints.",
+            MissionPhase.SAFE_MODE: "Minimal power state for survival. Minimal automated actions."
+        }
+        
+        return descriptions.get(phase, "Unknown phase")
+    
+    def is_phase_transition_valid(self, target_phase: MissionPhase) -> bool:
+        """Check if a phase transition is valid without performing it."""
+        return target_phase in self.PHASE_TRANSITIONS.get(self.current_phase, [])

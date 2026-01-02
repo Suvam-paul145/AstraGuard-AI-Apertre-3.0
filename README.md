@@ -126,6 +126,28 @@ We want to run this project like a real training ground. Our goal isn't just to 
 | **📊 Smart Dashboard** | Real-time visualization of threats and security posture. |
 | **🔬 Research Lab** | Integrated lab environment for testing and verifying security hypotheses. |
 | **⚡ Real-time Stream** | Powered by Pathway for high-performance data processing. |
+| **🚀 Mission-Phase Aware Policies** | Context-sensitive fault response based on CubeSat mission phase (LAUNCH, DEPLOYMENT, NOMINAL_OPS, PAYLOAD_OPS, SAFE_MODE). |
+| **🎯 Adaptive Responses** | Same anomaly triggers different actions depending on operational phase constraints. |
+
+---
+
+### 🚀 Mission-Phase Aware Fault Response
+
+AstraGuard AI now understands that CubeSat operations have different constraints at different stages:
+
+```
+LAUNCH → Minimal actions (log only, avoid destabilization)
+  ↓
+DEPLOYMENT → Limited responses (stabilize, avoid disruption)
+  ↓
+NOMINAL_OPS → Full autonomous recovery (optimize performance)
+  ↓
+PAYLOAD_OPS → Science priority (careful with power/attitude changes)
+  ↓
+SAFE_MODE → Survival only (minimal active responses)
+```
+
+**See [docs/TECHNICAL.md](docs/TECHNICAL.md) for detailed mission-phase policies and configuration.**
 
 ---
 

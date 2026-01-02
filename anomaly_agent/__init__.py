@@ -6,12 +6,29 @@ Real-time decision loop: detect → recall → reason → act → learn
 
 __version__ = "2.0.0"
 
-from .decision_loop import DecisionLoop
-from .reasoning_engine import ReasoningEngine
-from .confidence_scorer import ConfidenceScorer
+# Import available components
+try:
+    from .phase_aware_handler import PhaseAwareAnomalyHandler, DecisionTracer
+    __all__ = ["PhaseAwareAnomalyHandler", "DecisionTracer"]
+except (ImportError, ModuleNotFoundError):
+    __all__ = []
 
-__all__ = [
-    "DecisionLoop",
-    "ReasoningEngine",
-    "ConfidenceScorer"
-]
+# Legacy imports for compatibility (these modules may not exist)
+try:
+    from .decision_loop import DecisionLoop  # type: ignore
+    __all__.append("DecisionLoop")
+except (ImportError, ModuleNotFoundError):
+    pass
+
+try:
+    from .reasoning_engine import ReasoningEngine  # type: ignore
+    __all__.append("ReasoningEngine")
+except (ImportError, ModuleNotFoundError):
+    pass
+
+try:
+    from .confidence_scorer import ConfidenceScorer  # type: ignore
+    __all__.append("ConfidenceScorer")
+except (ImportError, ModuleNotFoundError):
+    pass
+

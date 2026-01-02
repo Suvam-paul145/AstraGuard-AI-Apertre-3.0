@@ -28,6 +28,7 @@ AstraGuard AI is a production-ready autonomous fault detection and recovery syst
 - **Autonomous Decisions**: Agentic loop that reasons before acting
 - **Concrete Actions**: Real system commands, not just alerts
 - **Explainability**: Plain-language decision traces
+- **Mission-Phase Awareness**: Context-sensitive fault response policies
 
 ### Key Differentiators
 
@@ -38,6 +39,32 @@ AstraGuard AI is a production-ready autonomous fault detection and recovery syst
 | **Decision Making** | Classification only | Reason → Decide → Act |
 | **Actions** | Manual intervention | Autonomous execution |
 | **Explainability** | Black box | LLM-assisted reasoning |
+| **Mission Context** | Phase-agnostic | **Phase-aware policies** |
+
+### Mission-Phase Aware Fault Response
+
+CubeSat operations have fundamentally different constraints across mission phases. AstraGuard now evaluates every anomaly decision considering the current mission phase:
+
+**Mission Phases:**
+- **LAUNCH**: Rocket ascent. Highly constrained. Log-only responses.
+- **DEPLOYMENT**: System stabilization. Limited responses. Avoid disruption.
+- **NOMINAL_OPS**: Standard operations. Full autonomous response capability.
+- **PAYLOAD_OPS**: Science mission. Balanced constraints. Payload priority.
+- **SAFE_MODE**: Minimum power state. Minimal active responses.
+
+**Example: Same Anomaly, Different Responses**
+
+A high-severity thermal fault (`severity = 0.75`) behaves differently:
+
+| Phase | Threshold Multiplier | Allowed Response | Decision |
+|-------|----------------------|------------------|----------|
+| LAUNCH | 2.0x (noisy) | Log only | LOG_ONLY |
+| DEPLOYMENT | 1.5x (sensitive) | Alert operators | ALERT_OPERATORS |
+| NOMINAL_OPS | 1.0x (standard) | Auto-recovery | THERMAL_REGULATION |
+| PAYLOAD_OPS | 1.0x (standard) | Auto-recovery | THERMAL_REGULATION |
+| SAFE_MODE | 0.8x (very sensitive) | Log only | LOG_ONLY |
+
+This ensures the system responds intelligently to context, avoiding over-aggressive recovery during launch or under-aggressive response during critical payload operations.
 
 ---
 
