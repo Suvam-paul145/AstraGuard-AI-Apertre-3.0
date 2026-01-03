@@ -240,13 +240,16 @@ class FallbackManager:
         Converts string mode to FallbackMode enum and transitions immediately.
         
         Args:
-            mode: Mode string ("PRIMARY", "HEURISTIC", or "SAFE")
+            mode: Mode string, case-insensitive ("primary", "heuristic", or "safe")
+                  Also accepts uppercase ("PRIMARY", "HEURISTIC", "SAFE")
             
         Returns:
             True if mode was set, False if invalid mode string
         """
         try:
-            target_mode = FallbackMode(mode)
+            # Normalize mode string to lowercase for enum matching
+            normalized_mode = mode.lower()
+            target_mode = FallbackMode(normalized_mode)
             if target_mode != self.current_mode:
                 # Create synthetic health state for transition logging
                 synthetic_state = {
@@ -255,10 +258,10 @@ class FallbackManager:
                     "system": {},
                 }
                 await self._transition_to_mode(target_mode, synthetic_state)
-            logger.debug(f"Fallback mode set to {mode}")
+            logger.debug(f"Fallback mode set to {normalized_mode}")
             return True
         except ValueError:
-            logger.warning(f"Invalid fallback mode: {mode}")
+            logger.warning(f"Invalid fallback mode: {mode} (must be one of: primary, heuristic, safe)")
             return False
     
     def is_degraded(self) -> bool:
