@@ -33,6 +33,8 @@ from anomaly.anomaly_detector import detect_anomaly, load_model
 from classifier.fault_classifier import classify
 from core.component_health import get_health_monitor
 from memory_engine.memory_store import AdaptiveMemoryStore
+from fastapi.responses import Response
+from core.metrics import get_metrics_text, get_metrics_content_type
 import numpy as np
 
 
@@ -119,6 +121,15 @@ async def health_check():
         status="healthy",
         version="1.0.0",
         timestamp=datetime.now()
+    )
+
+
+@app.get("/metrics")
+async def metrics():
+    """Prometheus metrics endpoint."""
+    return Response(
+        content=get_metrics_text(), 
+        media_type=get_metrics_content_type()
     )
 
 

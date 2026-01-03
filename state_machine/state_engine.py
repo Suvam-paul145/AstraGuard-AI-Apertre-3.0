@@ -6,6 +6,7 @@ import logging
 # Import error handling
 from core.error_handling import StateTransitionError
 from core.component_health import get_health_monitor
+from core.metrics import MISSION_PHASE
 
 logger = logging.getLogger(__name__)
 
@@ -147,6 +148,15 @@ class StateMachine:
             self.phase_start_time = datetime.now()
             self.phase_history.append((phase, datetime.now()))
 
+            # Update Prometheus metrics
+            try:
+                # Reset all phases to 0 then set current to 1
+                for p in MissionPhase:
+                    MISSION_PHASE.labels(phase=p.value).set(0)
+                MISSION_PHASE.labels(phase=phase.value).set(1)
+            except Exception:
+                pass  # Don't fail transition if metrics fail
+
             logger.info(
                 f"Mission phase transitioned: {previous_phase.value} → {phase.value}"
             )
@@ -240,6 +250,14 @@ class StateMachine:
         self.current_phase = MissionPhase.SAFE_MODE
         self.phase_start_time = datetime.now()
         self.phase_history.append((MissionPhase.SAFE_MODE, datetime.now()))
+
+        # Update Prometheus metrics
+        try:
+            for p in MissionPhase:
+                MISSION_PHASE.labels(phase=p.value).set(0)
+            MISSION_PHASE.labels(phase=MissionPhase.SAFE_MODE.value).set(1)
+        except Exception:
+            pass
 
         logger.warning(f"Forced transition to SAFE_MODE from {previous_phase.value}")
 

@@ -24,6 +24,7 @@ from state_machine.mission_phase_policy_engine import (
     EscalationLevel
 )
 from config.mission_phase_policy_loader import MissionPhasePolicyLoader
+from core.metrics import ANOMALIES_BY_TYPE
 
 logger = logging.getLogger(__name__)
 
@@ -144,6 +145,16 @@ class PhaseAwareAnomalyHandler:
             'timestamp': datetime.now(),
             'decision_id': self._generate_decision_id()
         }
+
+        # Update Prometheus metrics
+        try:
+            severity_level = policy_decision.severity  # e.g., "HIGH", "CRITICAL"
+            ANOMALIES_BY_TYPE.labels(
+                type=anomaly_type, 
+                severity=severity_level
+            ).inc()
+        except Exception as e:
+            logger.warning(f"Failed to update metrics: {e}")
         
         # Log the decision
         self._log_decision(decision)

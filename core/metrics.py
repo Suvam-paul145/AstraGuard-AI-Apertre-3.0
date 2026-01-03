@@ -157,6 +157,44 @@ MEMORY_STORE_PRUNINGS = Counter(
 )
 
 # ============================================================================
+# Mission & Recovery Metrics (New)
+# ============================================================================
+
+MISSION_PHASE = Gauge(
+    'astraguard_mission_phase',
+    'Current mission phase (1=Active)',
+    ['phase'],
+    registry=REGISTRY
+)
+
+ANOMALIES_BY_TYPE = Counter(
+    'astraguard_anomalies_by_type_total',
+    'Total anomalies by type and severity',
+    ['type', 'severity'],
+    registry=REGISTRY
+)
+
+RECOVERY_ACTIONS_TOTAL = Counter(
+    'astraguard_recovery_actions_total',
+    'Total recovery actions executed',
+    ['action'],
+    registry=REGISTRY
+)
+
+RECOVERY_SUCCESS_RATE = Gauge(
+    'astraguard_recovery_success_rate',
+    'Success rate of recovery actions (0-1)',
+    registry=REGISTRY
+)
+
+MTTR_SECONDS = Histogram(
+    'astraguard_mttr_seconds',
+    'Mean Time To Recovery in seconds',
+    buckets=(1, 5, 10, 30, 60, 120, 300),
+    registry=REGISTRY
+)
+
+# ============================================================================
 # Helper Functions
 # ============================================================================
 

@@ -30,6 +30,11 @@ import yaml
 import os
 
 from backend.safe_condition_parser import safe_evaluate_condition
+from core.metrics import (
+    RECOVERY_ACTIONS_TOTAL,
+    RECOVERY_SUCCESS_RATE,
+    MTTR_SECONDS
+)
 
 logger = logging.getLogger(__name__)
 
@@ -958,6 +963,19 @@ class EnhancedRecoveryOrchestrator:
         if action.success and action.duration_seconds > 0:
             total_successful_duration = self.metrics.average_mttr_seconds * (self.metrics.successful_actions - 1)
             self.metrics.average_mttr_seconds = (total_successful_duration + action.duration_seconds) / self.metrics.successful_actions
+
+        # Update Prometheus metrics
+        try:
+            RECOVERY_ACTIONS_TOTAL.labels(action=action.action_type).inc()
+            
+            if self.metrics.total_actions_executed > 0:
+                success_rate = self.metrics.successful_actions / self.metrics.total_actions_executed
+                RECOVERY_SUCCESS_RATE.set(success_rate)
+                
+            if action.success and action.duration_seconds > 0:
+                MTTR_SECONDS.observe(action.duration_seconds)
+        except Exception:
+            pass  # Don't fail if metrics update fails
 
     def _record_action_history(self, action: RecoveryAction, max_history: int = 100):
         """Record action to history for inspection."""
