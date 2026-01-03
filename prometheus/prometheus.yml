@@ -10,6 +10,9 @@ scrape_configs:
       - targets: ['host.docker.internal:8000']
         labels:
           environment: 'production'
+    basic_auth:
+      username: 'admin'
+      password: 'admin'
 
   - job_name: 'prometheus'
     static_configs:
