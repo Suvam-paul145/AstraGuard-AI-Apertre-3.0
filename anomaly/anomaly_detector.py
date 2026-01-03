@@ -9,9 +9,8 @@ from typing import Dict, Tuple, Optional
 from core.error_handling import (
     ModelLoadError,
     AnomalyEngineError,
-    safe_execute,
 )
-from core.component_health import get_health_monitor, HealthStatus
+from core.component_health import get_health_monitor
 from core.circuit_breaker import (
     CircuitBreaker,
     CircuitOpenError,
@@ -63,7 +62,7 @@ async def _load_model_impl() -> bool:
 
     # Try to import numpy - if it fails, use heuristic mode
     try:
-        import numpy as np
+        import numpy  # noqa: F401 - validate import but not used directly
     except ImportError as e:
         logger.warning(f"numpy not available: {e}. Using heuristic mode.")
         _USING_HEURISTIC_MODE = True
@@ -229,7 +228,6 @@ def detect_anomaly(data: Dict) -> Tuple[bool, float]:
 
     # Track latency
     start_time = time.time()
-    detector_type = "model"
 
     try:
         # Always ensure component is registered (safe: idempotent)
@@ -288,7 +286,6 @@ def detect_anomaly(data: Dict) -> Tuple[bool, float]:
                 # Fall through to heuristic
 
         # Use heuristic fallback
-        detector_type = "heuristic"
         is_anomalous, score = _detect_anomaly_heuristic(data)
         (
             health_monitor.mark_degraded(

@@ -437,7 +437,7 @@ async def main():
             ) as resp:
                 if resp.status != 200:
                     raise ConnectionError(f"Health endpoint returned {resp.status}")
-        except Exception as conn_err:
+        except Exception:
             # Services not available - auto-fallback to dry-run
             if not dry_run:
                 logger.info(
