@@ -92,6 +92,32 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v2
     
+    - name: Create environment file
+      run: |
+        cat > .env << EOF
+        # Application Configuration
+        ENVIRONMENT=production
+        DEBUG=false
+        
+        # Redis Configuration
+        REDIS_HOST=localhost
+        REDIS_PORT=6379
+        REDIS_URL=redis://localhost:6379
+        
+        # API Configuration
+        API_HOST=0.0.0.0
+        API_PORT=8000
+        
+        # Monitoring
+        GRAFANA_PASSWORD=astraguard-admin
+        LOG_LEVEL=INFO
+        
+        # Python Configuration
+        PYTHONUNBUFFERED=1
+        PYTHONDONTWRITEBYTECODE=1
+        EOF
+        echo "✅ Environment file created"
+    
     - name: Build Docker images
       run: |
         docker build -t astraguard-ai:latest .
