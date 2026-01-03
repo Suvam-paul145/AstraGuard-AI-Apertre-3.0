@@ -389,9 +389,12 @@ def safe_evaluate_condition(
     """
     try:
         return _parser.evaluate(expression, context)
+    except ValueError:
+        # Validation and safety errors from the parser should surface to callers/tests
+        raise
     except Exception as e:
-        # Log error and return safe default (False)
+        # Unexpected errors -> log and re-raise as ValueError to keep the API consistent
         import logging
         logger = logging.getLogger(__name__)
-        logger.error(f"Error evaluating condition '{expression}': {e}")
-        return False
+        logger.error(f"Unexpected error evaluating condition '{expression}': {e}", exc_info=True)
+        raise ValueError("Unexpected error while evaluating condition") from e
