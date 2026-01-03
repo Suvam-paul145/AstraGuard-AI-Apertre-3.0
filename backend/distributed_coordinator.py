@@ -221,11 +221,16 @@ class DistributedResilienceCoordinator:
                 # Get local state for voting
                 local_state = await self.health.get_comprehensive_state()
 
+                # Extract values from nested structure
+                circuit_state = local_state.get("circuit_breaker", {}).get("state", "UNKNOWN")
+                fallback_mode = local_state.get("fallback", {}).get("mode", "PRIMARY")
+                health_score = local_state.get("health_score", 0.0)
+
                 # Create vote
                 vote = {
-                    "circuit_breaker_state": local_state.get("circuit_state", "UNKNOWN"),
-                    "fallback_mode": local_state.get("fallback_mode", "PRIMARY"),
-                    "health_score": local_state.get("health_score", 0.0),
+                    "circuit_breaker_state": circuit_state,
+                    "fallback_mode": fallback_mode,
+                    "health_score": health_score,
                     "timestamp": datetime.utcnow().isoformat(),
                 }
 
