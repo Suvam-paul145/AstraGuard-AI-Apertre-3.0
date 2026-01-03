@@ -231,7 +231,7 @@ jobs:
           az container create \
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
             --name astraguard-ai \
-            --image ${{ env.REGISTRY }}/${{ github.repository }}:latest \
+            --image ${{ env.REGISTRY }}/${{ github.repository_owner }}/astraguard-ai:latest \
             --cpu 2 \
             --memory 4 \
             --port 8000 8501 \
