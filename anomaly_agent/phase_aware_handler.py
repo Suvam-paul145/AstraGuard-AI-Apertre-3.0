@@ -25,6 +25,8 @@ from state_machine.mission_phase_policy_engine import (
 )
 from config.mission_phase_policy_loader import MissionPhasePolicyLoader
 from core.metrics import ANOMALIES_BY_TYPE
+from anomaly_agent.explainability import build_explanation
+
 
 logger = logging.getLogger(__name__)
 
@@ -145,6 +147,13 @@ class PhaseAwareAnomalyHandler:
             'timestamp': datetime.now(),
             'decision_id': self._generate_decision_id()
         }
+        decision["explanation"] = build_explanation({
+    "primary_factor": policy_decision.reasoning,
+    "secondary_factors": [],
+    "mission_phase": current_phase.value,
+    "confidence": confidence
+})
+
 
         # Update Prometheus metrics
         try:
