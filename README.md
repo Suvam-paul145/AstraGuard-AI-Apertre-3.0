@@ -545,6 +545,91 @@ for component, health in status['components'].items():
 
 ---
 
+## 🧠 Operator Feedback Schema (#50)
+
+**Purpose**: Type-safe data contract for human-in-the-loop learning loop. Enables operators to validate AI-recommended recovery actions and provide feedback for continuous improvement.
+
+**Schema** - `FeedbackEvent`:
+```python
+from models.feedback import FeedbackEvent, FeedbackLabel
+
+event = FeedbackEvent(
+    fault_id="power_f001",
+    anomaly_type="power_subsystem",
+    recovery_action="emergency_power_cycle",
+    label=FeedbackLabel.CORRECT,
+    mission_phase="NOMINAL_OPS",
+    operator_notes="Recovered 2.3s - optimal response",
+    confidence_score=0.95
+)
+```
+
+**Features:**
+- ✅ Pydantic v2 validation with strict type checking
+- ✅ Mission phase enum validation (LAUNCH, DEPLOYMENT, NOMINAL_OPS, PAYLOAD_OPS, SAFE_MODE)
+- ✅ Feedback labels for multi-class classification (CORRECT, INSUFFICIENT, WRONG)
+- ✅ Confidence scoring (0.0-1.0) for operator certainty
+- ✅ Optional operator notes (max 500 chars) for context
+- ✅ Automatic timestamp generation with ISO format serialization
+- ✅ 100% test coverage with 12 comprehensive test cases
+- ✅ Compact JSON serialization (<300B/event) for efficient storage
+
+**Usage Example:**
+```python
+# Validate operator feedback
+from models.feedback import FeedbackEvent, FeedbackLabel
+
+feedback = FeedbackEvent(
+    fault_id="thermal_001",
+    anomaly_type="thermal_spike",
+    recovery_action="heater_cooldown",
+    label=FeedbackLabel.CORRECT,
+    mission_phase="PAYLOAD_OPS",
+    operator_notes="Action worked within 45 seconds"
+)
+
+# Serialize to JSON for storage/transmission
+json_data = feedback.model_dump_json()
+print(f"Event size: {len(json_data)} bytes")
+
+# All validations enforced:
+# - fault_id: 1-64 chars
+# - anomaly_type: 1-64 chars
+# - recovery_action: 1-128 chars
+# - mission_phase: must match regex pattern
+# - confidence_score: 0.0 ≤ score ≤ 1.0
+# - operator_notes: max 500 chars (optional)
+```
+
+**Validation Examples:**
+```python
+# ✅ Valid - all constraints satisfied
+event = FeedbackEvent(
+    fault_id="f123", anomaly_type="power",
+    recovery_action="reset", label=FeedbackLabel.INSUFFICIENT,
+    mission_phase="NOMINAL_OPS"
+)
+
+# ❌ Invalid - mission_phase must be uppercase
+FeedbackEvent(..., mission_phase="nominal_ops")
+
+# ❌ Invalid - confidence_score must be 0.0-1.0
+FeedbackEvent(..., confidence_score=1.5)
+
+# ❌ Invalid - operator_notes exceeds max_length
+FeedbackEvent(..., operator_notes="x" * 501)
+```
+
+**Blocking Issues:**
+- #51: `@log_feedback` decorator integration
+- #52: Database storage layer
+- #53: Feedback aggregation analysis
+- #54: ML model retraining pipeline
+- #55: Dashboard feedback visualization
+- #56: Feedback export/reporting
+
+---
+
 ## 🎯 Project Goals (ECWoC '26)
 
 As part of **Elite Coders Winter of Code 2026**, AstraGuard AI has clear deliverables and learning objectives:
