@@ -40,7 +40,7 @@ class TestPhaseTransitions:
     def test_deployment_to_nominal_transition(self, state_machine):
         """Test valid transition DEPLOYMENT → NOMINAL_OPS."""
         # Start from NOMINAL_OPS default state
-        state_machine.mission_phase = MissionPhase.DEPLOYMENT
+        state_machine.current_phase = MissionPhase.DEPLOYMENT
         result = state_machine.set_phase(MissionPhase.NOMINAL_OPS)
         
         assert result['success'] is True

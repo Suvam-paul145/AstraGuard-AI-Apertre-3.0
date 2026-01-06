@@ -41,3 +41,7 @@ pytz==2024.1
 protobuf>=4.25.8,<5.0.0
 loguru==0.7.2
 psutil>=5.9.0  # For resource monitoring
+
+PyYAML>=6.0
+pytest>=8.0.0
+pytest-asyncio>=0.23.0

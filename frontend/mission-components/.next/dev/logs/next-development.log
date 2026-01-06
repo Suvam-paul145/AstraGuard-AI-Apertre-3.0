@@ -2050,3 +2050,135 @@ It can also happen if the client has a browser extension installed which messes 
 [00:21:58.494] Browser LOG     %c[Vercel Web Analytics]%c Debug mode is enabled by default in development. No requests will be sent to the server. color: rgb(120, 120, 120) color: inherit
 [00:21:58.494] Browser LOG     %c[Vercel Web Analytics]%c Running queued event color: rgb(120, 120, 120) color: inherit pageview {"path":"/","route":"/"}
 [00:21:58.494] Browser LOG     %c[Vercel Web Analytics]%c [pageview] http://localhost:3000/ color: rgb(120, 120, 120) color: inherit {"dp":"/","o":"http://localhost:3000/","r":"","sdkn":"@vercel/analytics/next","sdkv":"1.6.1","sv":"0.1.3","ts":1767722475937}
+[00:29:04.263] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[00:29:04.452] Browser WARN    Please ensure that the container has a non-static position, like 'relative', 'fixed', or 'absolute' to ensure scroll offset is calculated correctly.
+[00:29:04.714] Browser LOG     %c[Vercel Web Analytics]%c Debug mode is enabled by default in development. No requests will be sent to the server. color: rgb(120, 120, 120) color: inherit
+[00:29:04.714] Browser LOG     %c[Vercel Web Analytics]%c Running queued event color: rgb(120, 120, 120) color: inherit pageview {"path":"/","route":"/"}
+[00:29:04.714] Browser LOG     %c[Vercel Web Analytics]%c [pageview] http://localhost:3000/ color: rgb(120, 120, 120) color: inherit {"dp":"/","o":"http://localhost:3000/","r":"","sdkn":"@vercel/analytics/next","sdkv":"1.6.1","sv":"0.1.3","ts":1767722902067}
+[00:45:14.672] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[00:45:14.956] Browser WARN    Please ensure that the container has a non-static position, like 'relative', 'fixed', or 'absolute' to ensure scroll offset is calculated correctly.
+[00:45:14.956] Browser LOG     %c[Vercel Web Analytics]%c Debug mode is enabled by default in development. No requests will be sent to the server. color: rgb(120, 120, 120) color: inherit
+[00:45:14.956] Browser LOG     %c[Vercel Web Analytics]%c Running queued event color: rgb(120, 120, 120) color: inherit pageview {"path":"/","route":"/"}
+[00:45:14.956] Browser LOG     %c[Vercel Web Analytics]%c [pageview] http://localhost:3000/ color: rgb(120, 120, 120) color: inherit {"dp":"/","o":"http://localhost:3000/","r":"","sdkn":"@vercel/analytics/next","sdkv":"1.6.1","sv":"0.1.3","ts":1767723872398}
+[00:45:17.933] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[00:45:18.060] Browser LOG     %c[Vercel Web Analytics]%c Debug mode is enabled by default in development. No requests will be sent to the server. color: rgb(120, 120, 120) color: inherit
+[00:45:18.060] Browser LOG     %c[Vercel Web Analytics]%c Running queued event color: rgb(120, 120, 120) color: inherit pageview {"path":"/experience","route":"/experience"}
+[00:45:18.060] Browser LOG     %c[Vercel Web Analytics]%c [pageview] http://localhost:3000/experience color: rgb(120, 120, 120) color: inherit {"dp":"/experience","o":"http://localhost:3000/experience","sdkn":"@vercel/analytics/next","sdkv":"1.6.1","sv":"0.1.3","ts":1767723875510}
+[00:45:18.499] Browser LOG     WebGL version: WebGL 2.0 (OpenGL ES 3.0 Chromium)
+[00:45:18.499] Browser LOG     WebGL version: WebGL 2.0 (OpenGL ES 3.0 Chromium)
+[00:45:18.499] Browser DEBUG   Loading progress: 0% (0/37)
+[00:45:18.499] Browser DEBUG   Start preloading assets...
+[00:45:18.499] Browser DEBUG   Model loaded: 0
+[00:45:18.499] Browser DEBUG   Loading progress: 3% (1/37)
+[00:45:18.499] Browser DEBUG   Texture loaded: /assets/img/discs/disc.png
+[00:45:18.499] Browser DEBUG   Texture loaded: /assets/img/discs/disc.png
+[00:45:18.499] Browser DEBUG   Loading progress: 8% (3/37)
+[00:45:18.499] Browser DEBUG   Texture loaded: /assets/img/other/smoke.png
+[00:45:18.499] Browser DEBUG   Texture loaded: /assets/img/planets/sun.jpg
+[00:45:18.499] Browser DEBUG   Texture loaded: /assets/img/planets/mercury.jpg
+[00:45:18.499] Browser DEBUG   Texture loaded: /assets/img/planets/venus.jpg
+[00:45:18.499] Browser DEBUG   Texture loaded: /assets/img/planets/earth.jpg
+[00:45:18.499] Browser DEBUG   Loading progress: 22% (8/37)
+[00:45:18.499] Browser DEBUG   Texture loaded: /assets/img/planets/earthclouds.jpg
+[00:45:18.499] Browser DEBUG   Texture loaded: /assets/img/planets/jupiter.jpg
+[00:45:18.499] Browser DEBUG   Texture loaded: /assets/img/planets/earthnight.jpg
+[00:45:18.499] Browser DEBUG   Texture loaded: /assets/img/planets/mars.jpg
+[00:45:18.499] Browser DEBUG   Texture loaded: /assets/img/planets/saturn.jpg
+[00:45:18.499] Browser DEBUG   Texture loaded: /assets/img/planets/saturnring.jpg
+[00:45:18.499] Browser DEBUG   Texture loaded: /assets/img/planets/uranus.jpg
+[00:45:18.499] Browser DEBUG   Texture loaded: /assets/img/planets/uranusring.jpg
+[00:45:18.499] Browser DEBUG   Texture loaded: /assets/img/planets/neptune.jpg
+[00:45:18.499] Browser DEBUG   Texture loaded: /assets/img/continent/continent.jpg
+[00:45:18.499] Browser DEBUG   Texture loaded: /assets/img/city/city.jpg
+[00:45:18.499] Browser DEBUG   Icon loaded: /assets/icons/zoom_progress_indicator/galaxy.png
+[00:45:18.499] Browser DEBUG   Loading progress: 54% (20/37)
+[00:45:18.500] Browser DEBUG   Texture loaded: /assets/img/district/district.jpg
+[00:45:18.500] Browser DEBUG   Icon loaded: /assets/icons/zoom_progress_indicator/space.png
+[00:45:18.500] Browser DEBUG   Icon loaded: /assets/icons/zoom_progress_indicator/solarsystem.png
+[00:45:18.500] Browser DEBUG   Icon loaded: /assets/icons/zoom_progress_indicator/earthapproach.png
+[00:45:18.500] Browser DEBUG   Icon loaded: /assets/icons/zoom_progress_indicator/earth.png
+[00:45:18.500] Browser DEBUG   Icon loaded: /assets/icons/zoom_progress_indicator/continent.png
+[00:45:18.500] Browser DEBUG   Icon loaded: /assets/icons/zoom_progress_indicator/city.png
+[00:45:18.500] Browser DEBUG   Icon loaded: /assets/icons/zoom_progress_indicator/district.png
+[00:45:18.500] Browser DEBUG   Icon loaded: /assets/icons/zoom_progress_indicator/pin.png
+[00:45:18.500] Browser DEBUG   Icon loaded: /assets/icons/zoom_progress_indicator/astronaut.png
+[00:45:18.500] Browser DEBUG   Icon loaded: /assets/icons/zoom_progress_indicator/superhero.png
+[00:45:18.500] Browser DEBUG   Icon loaded: /assets/icons/zoom_progress_indicator/human.png
+[00:45:18.500] Browser DEBUG   All icons loaded.
+[00:45:18.500] Browser DEBUG   Assets preloading complete.
+[00:45:18.500] Browser DEBUG   Loading progress: 86% (32/37)
+[00:45:21.208] Browser DEBUG   Animation complete - zoomed in from galaxy
+[00:45:22.061] Browser DEBUG   Animation complete - zoomed out from solarSystemApproach
+[00:45:27.120] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[00:45:27.308] Browser WARN    Please ensure that the container has a non-static position, like 'relative', 'fixed', or 'absolute' to ensure scroll offset is calculated correctly.
+[00:45:27.308] Browser LOG     %c[Vercel Web Analytics]%c Debug mode is enabled by default in development. No requests will be sent to the server. color: rgb(120, 120, 120) color: inherit
+[00:45:27.308] Browser LOG     %c[Vercel Web Analytics]%c Running queued event color: rgb(120, 120, 120) color: inherit pageview {"path":"/","route":"/"}
+[00:45:27.308] Browser LOG     %c[Vercel Web Analytics]%c [pageview] http://localhost:3000/ color: rgb(120, 120, 120) color: inherit {"dp":"/","o":"http://localhost:3000/","r":"","sdkn":"@vercel/analytics/next","sdkv":"1.6.1","sv":"0.1.3","ts":1767723884757}
+[00:45:29.690] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[00:45:29.827] Browser LOG     %c[Vercel Web Analytics]%c Debug mode is enabled by default in development. No requests will be sent to the server. color: rgb(120, 120, 120) color: inherit
+[00:45:29.827] Browser LOG     %c[Vercel Web Analytics]%c Running queued event color: rgb(120, 120, 120) color: inherit pageview {"path":"/experience","route":"/experience"}
+[00:45:29.827] Browser LOG     %c[Vercel Web Analytics]%c [pageview] http://localhost:3000/experience color: rgb(120, 120, 120) color: inherit {"dp":"/experience","o":"http://localhost:3000/experience","sdkn":"@vercel/analytics/next","sdkv":"1.6.1","sv":"0.1.3","ts":1767723887259}
+[00:45:30.213] Browser LOG     WebGL version: WebGL 2.0 (OpenGL ES 3.0 Chromium)
+[00:45:30.213] Browser LOG     WebGL version: WebGL 2.0 (OpenGL ES 3.0 Chromium)
+[00:45:30.213] Browser DEBUG   Loading progress: 0% (0/37)
+[00:45:30.213] Browser DEBUG   Start preloading assets...
+[00:45:30.213] Browser DEBUG   Model loaded: 0
+[00:45:30.213] Browser DEBUG   Texture loaded: /assets/img/discs/disc.png
+[00:45:30.213] Browser DEBUG   Texture loaded: /assets/img/discs/disc.png
+[00:45:30.213] Browser DEBUG   Loading progress: 8% (3/37)
+[00:45:30.213] Browser DEBUG   Texture loaded: /assets/img/planets/sun.jpg
+[00:45:30.213] Browser DEBUG   Texture loaded: /assets/img/planets/mercury.jpg
+[00:45:30.213] Browser DEBUG   Texture loaded: /assets/img/planets/venus.jpg
+[00:45:30.213] Browser DEBUG   Texture loaded: /assets/img/planets/earth.jpg
+[00:45:30.213] Browser DEBUG   Texture loaded: /assets/img/planets/earthnight.jpg
+[00:45:30.213] Browser DEBUG   Loading progress: 22% (8/37)
+[00:45:30.213] Browser DEBUG   Texture loaded: /assets/img/planets/earthclouds.jpg
+[00:45:30.213] Browser DEBUG   Texture loaded: /assets/img/planets/saturnring.jpg
+[00:45:30.213] Browser DEBUG   Texture loaded: /assets/img/planets/mars.jpg
+[00:45:30.213] Browser DEBUG   Texture loaded: /assets/img/planets/jupiter.jpg
+[00:45:30.213] Browser DEBUG   Texture loaded: /assets/img/planets/saturn.jpg
+[00:45:30.213] Browser DEBUG   Texture loaded: /assets/img/planets/uranus.jpg
+[00:45:30.213] Browser DEBUG   Texture loaded: /assets/img/planets/uranusring.jpg
+[00:45:30.213] Browser DEBUG   Texture loaded: /assets/img/planets/neptune.jpg
+[00:45:30.213] Browser DEBUG   Texture loaded: /assets/img/other/smoke.png
+[00:45:30.213] Browser DEBUG   Texture loaded: /assets/img/continent/continent.jpg
+[00:45:30.213] Browser DEBUG   Texture loaded: /assets/img/city/city.jpg
+[00:45:30.213] Browser DEBUG   Loading progress: 51% (19/37)
+[00:45:30.213] Browser DEBUG   Icon loaded: /assets/icons/zoom_progress_indicator/galaxy.png
+[00:45:30.213] Browser DEBUG   Texture loaded: /assets/img/district/district.jpg
+[00:45:30.213] Browser DEBUG   Icon loaded: /assets/icons/zoom_progress_indicator/space.png
+[00:45:30.213] Browser DEBUG   Icon loaded: /assets/icons/zoom_progress_indicator/solarsystem.png
+[00:45:30.213] Browser DEBUG   Icon loaded: /assets/icons/zoom_progress_indicator/earthapproach.png
+[00:45:30.213] Browser DEBUG   Icon loaded: /assets/icons/zoom_progress_indicator/earth.png
+[00:45:30.213] Browser DEBUG   Icon loaded: /assets/icons/zoom_progress_indicator/continent.png
+[00:45:30.213] Browser DEBUG   Icon loaded: /assets/icons/zoom_progress_indicator/city.png
+[00:45:30.213] Browser DEBUG   Icon loaded: /assets/icons/zoom_progress_indicator/district.png
+[00:45:30.213] Browser DEBUG   Icon loaded: /assets/icons/zoom_progress_indicator/pin.png
+[00:45:30.213] Browser DEBUG   Icon loaded: /assets/icons/zoom_progress_indicator/astronaut.png
+[00:45:30.213] Browser DEBUG   Icon loaded: /assets/icons/zoom_progress_indicator/superhero.png
+[00:45:30.213] Browser DEBUG   Icon loaded: /assets/icons/zoom_progress_indicator/human.png
+[00:45:30.213] Browser DEBUG   All icons loaded.
+[00:45:30.213] Browser DEBUG   Assets preloading complete.
+[00:45:30.213] Browser DEBUG   Loading progress: 86% (32/37)
+[00:45:31.524] Browser DEBUG   Animation complete - zoomed in from galaxy
+[00:45:32.353] Browser DEBUG   Animation complete - zoomed out from solarSystemApproach
+[00:45:39.972] Browser DEBUG   Animation complete - zoomed in from galaxy
+[00:45:40.291] Browser DEBUG   Animation complete - zoomed out from solarSystemApproach
+[00:45:41.840] Browser DEBUG   Animation complete - zoomed in from galaxy
+[00:45:42.690] Browser DEBUG   Animation complete - zoomed out from solarSystemApproach
+[00:45:43.337] Browser DEBUG   Animation complete - zoomed in from galaxy
+[00:45:44.217] Browser DEBUG   Animation complete - zoomed in from solarSystemApproach
+[00:45:44.829] Browser DEBUG   Animation complete - zoomed in from solarSystemRotation
+[00:45:45.435] Browser DEBUG   Animation complete - zoomed in from earthApproach
+[00:45:46.581] Browser DEBUG   Animation complete - zoomed in from earth
+[00:45:46.581] Browser DEBUG   Animation complete - zoomed in from earth
+[00:45:46.581] Browser DEBUG   Animation complete - zoomed in from earth
+[00:45:46.581] Browser DEBUG   Animation complete - zoomed in from earth
+[00:45:46.581] Browser DEBUG   Animation complete - zoomed in from earth
+[00:45:46.581] Browser DEBUG   Animation complete - zoomed in from earth
+[00:45:47.935] Browser DEBUG   Animation complete - zoomed out from district
+[00:45:49.227] Browser DEBUG   Animation complete - zoomed out from city
+[00:45:49.228] Browser DEBUG   Animation complete - zoomed out from city
+[00:45:50.555] Browser DEBUG   Animation complete - zoomed out from earth
+[00:45:51.974] Browser DEBUG   Animation complete - zoomed in from earthApproach
+[00:45:52.516] Browser DEBUG   Animation complete - zoomed out from earth
