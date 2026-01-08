@@ -1,10 +1,11 @@
 import type React from "react"
 import type { Metadata, Viewport } from "next"
 import { Playfair_Display, Geist_Mono } from "next/font/google"
-import { Analytics } from "@vercel/analytics/next"
-import { RateLimitNotification } from "../components/rate-limit-notification"
-import { Toaster } from "sonner"
 import "./globals.css"
+import { ThemeProvider } from "@/components/theme-provider"
+import { Toaster } from "sonner"
+import { Analytics } from "@vercel/analytics/react"
+import { ClientRateLimitNotification } from "@/components/ClientRateLimitNotification"
 
 const playfair = Playfair_Display({
   subsets: ["latin"],
@@ -17,22 +18,8 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: "AstraGuard AI | Autonomous Fault Recovery for CubeSats",
-  description:
-    "Satellites don't debug themselves. AstraGuard does. Real-time anomaly detection and autonomous fault recovery for space systems.",
-  keywords: ["CubeSat", "Fault Recovery", "Anomaly Detection", "Space AI", "Telemetry", "Machine Learning"],
-  authors: [{ name: "sr-857" }],
-  openGraph: {
-    title: "AstraGuard AI | Autonomous Fault Recovery for CubeSats",
-    description: "Real-time anomaly detection and autonomous fault recovery for space systems.",
-    type: "website",
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "AstraGuard AI",
-    description: "Satellites don't debug themselves. AstraGuard does.",
-  },
-    generator: 'v0.app'
+  title: "AstraGuard AI",
+  description: "Autonomous Fault Recovery for CubeSats",
 }
 
 export const viewport: Viewport = {
@@ -47,13 +34,15 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className={`${playfair.variable} ${geistMono.variable}`}>
-      <body className="font-sans antialiased overflow-x-hidden">
-        <div className="noise-overlay" />
-        {children}
-        <RateLimitNotification />
-        <Toaster />
-        <Analytics />
+    <html lang="en" suppressHydrationWarning>
+      <body className={`${playfair.variable} ${geistMono.variable} font-sans antialiased overflow-x-hidden`}>
+        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
+          <div className="noise-overlay" />
+          {children}
+          <ClientRateLimitNotification />
+          <Toaster />
+          <Analytics />
+        </ThemeProvider>
       </body>
     </html>
   )
