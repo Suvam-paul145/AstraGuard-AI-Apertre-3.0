@@ -31,6 +31,7 @@ from api.models import (
     AnomalyHistoryResponse,
     HealthCheckResponse,
 )
+from api.auth import get_api_key, require_permission, APIKey
 from state_machine.state_engine import StateMachine, MissionPhase
 from config.mission_phase_policy_loader import MissionPhasePolicyLoader
 from anomaly_agent.phase_aware_handler import PhaseAwareAnomalyHandler
@@ -335,9 +336,11 @@ async def metrics(username: str = Depends(get_current_username)):
 
 
 @app.post("/api/v1/telemetry", response_model=AnomalyResponse, status_code=status.HTTP_200_OK)
-async def submit_telemetry(telemetry: TelemetryInput):
+async def submit_telemetry(telemetry: TelemetryInput, api_key: APIKey = Depends(get_api_key)):
     """
     Submit single telemetry point for anomaly detection.
+
+    Requires API key authentication with 'write' permission.
 
     Returns:
         AnomalyResponse with detection results and recommended actions
@@ -503,9 +506,11 @@ async def get_latest_telemetry():
 
 
 @app.post("/api/v1/telemetry/batch", response_model=BatchAnomalyResponse)
-async def submit_telemetry_batch(batch: TelemetryBatch):
+async def submit_telemetry_batch(batch: TelemetryBatch, api_key: APIKey = Depends(get_api_key)):
     """
     Submit batch of telemetry points for anomaly detection.
+
+    Requires API key authentication with 'write' permission.
 
     Returns:
         BatchAnomalyResponse with aggregated results
@@ -527,8 +532,11 @@ async def submit_telemetry_batch(batch: TelemetryBatch):
 
 
 @app.get("/api/v1/status", response_model=SystemStatus)
-async def get_status():
-    """Get system health and status."""
+async def get_status(api_key: APIKey = Depends(get_api_key)):
+    """Get system health and status.
+
+    Requires API key authentication with 'read' permission.
+    """
     health_monitor = get_health_monitor()
     components = health_monitor.get_all_health()
 
@@ -554,8 +562,11 @@ async def get_status():
 
 
 @app.get("/api/v1/phase", response_model=dict)
-async def get_phase():
-    """Get current mission phase."""
+async def get_phase(api_key: APIKey = Depends(get_api_key)):
+    """Get current mission phase.
+
+    Requires API key authentication with 'read' permission.
+    """
     current_phase = state_machine.get_current_phase()
     constraints = phase_aware_handler.get_phase_constraints(current_phase)
 
@@ -569,8 +580,11 @@ async def get_phase():
 
 
 @app.post("/api/v1/phase", response_model=PhaseUpdateResponse)
-async def update_phase(request: PhaseUpdateRequest):
-    """Update mission phase."""
+async def update_phase(request: PhaseUpdateRequest, api_key: APIKey = Depends(require_permission("write"))):
+    """Update mission phase.
+
+    Requires API key authentication with 'write' permission.
+    """
     try:
         target_phase = MissionPhase(request.phase.value)
 
@@ -600,8 +614,11 @@ async def update_phase(request: PhaseUpdateRequest):
 
 
 @app.get("/api/v1/memory/stats", response_model=MemoryStats)
-async def get_memory_stats():
-    """Query memory store statistics."""
+async def get_memory_stats(api_key: APIKey = Depends(get_api_key)):
+    """Query memory store statistics.
+
+    Requires API key authentication with 'read' permission.
+    """
     stats = memory_store.get_stats()
 
     return MemoryStats(
@@ -615,6 +632,7 @@ async def get_memory_stats():
 
 @app.get("/api/v1/history/anomalies", response_model=AnomalyHistoryResponse)
 async def get_anomaly_history(
+    api_key: str = Depends(get_api_key),
     start_time: datetime = None,
     end_time: datetime = None,
     limit: int = 100,

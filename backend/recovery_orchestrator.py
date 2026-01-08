@@ -111,13 +111,13 @@ class RecoveryConfig:
         self.config = self._load_config()
 
     def _load_config(self) -> Dict[str, Any]:
-        """Load YAML config with defaults fallback."""
+        """Load YAML config with environment variable substitution and defaults fallback."""
         if os.path.exists(self.config_path):
             try:
-                with open(self.config_path, "r") as f:
-                    loaded = yaml.safe_load(f) or {}
-                    # Merge with defaults
-                    return self._merge_dicts(self.DEFAULT_CONFIG, loaded)
+                from config.config_utils import load_config_with_env_vars
+                loaded = load_config_with_env_vars(self.config_path, self.DEFAULT_CONFIG)
+                # Merge with defaults
+                return self._merge_dicts(self.DEFAULT_CONFIG, loaded)
             except Exception as e:
                 logger.warning(
                     f"Failed to load {self.config_path}: {e}, using defaults"
