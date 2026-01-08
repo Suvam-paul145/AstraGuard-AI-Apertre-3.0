@@ -1,0 +1,55 @@
+{
+  "phases": {
+    "LAUNCH": {
+      "description": "Rocket ascent and orbital insertion",
+      "allowed_actions": [
+        "LOG_EVENT",
+        "MONITOR"
+      ],
+      "forbidden_actions": [
+        "RESTART_SERVICE",
+        "FIRE_THRUSTERS",
+        "DEPLOY_SOLAR_PANELS"
+      ],
+      "threshold_multiplier": 2.0
+    },
+    "DEPLOYMENT": {
+      "description": "Initial system startup and stabilization",
+      "allowed_actions": [
+        "LOG_EVENT",
+        "MONITOR",
+        "SAFE_MODE"
+      ],
+      "forbidden_actions": [
+        "FIRE_THRUSTERS"
+      ],
+      "threshold_multiplier": 1.5
+    },
+    "NOMINAL_OPS": {
+      "description": "Standard mission operations",
+      "allowed_actions": [
+        "LOG_EVENT",
+        "MONITOR",
+        "RESTART_SERVICE",
+        "THERMAL_REGULATION",
+        "POWER_LOAD_BALANCING",
+        "SAFE_MODE"
+      ],
+      "forbidden_actions": [],
+      "threshold_multiplier": 1.0
+    },
+    "SAFE_MODE": {
+      "description": "Minimal power state for survival",
+      "allowed_actions": [
+        "LOG_EVENT",
+        "MONITOR",
+        "PING_GROUND"
+      ],
+      "forbidden_actions": [
+        "PAYLOAD_OPERATIONS",
+        "HIGH_POWER_TRANSMISSION"
+      ],
+      "threshold_multiplier": 1.0
+    }
+  }
+}

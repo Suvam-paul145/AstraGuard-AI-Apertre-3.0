@@ -37,18 +37,18 @@
 
 ## 🏆 Our Amazing Contributors
 
-A huge thank you to all the talented developers who have contributed to AstraGuard AI
+### A huge thank you to all the talented developers who have contributed to AstraGuard AI
 
 <div >
 
-### 🌟 Hall of Fame
+## 🌟 Hall of Fame
 
-<a href="https://github.com/sr-857/AstraGuard-AI/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=sr-857/AstraGuard-AI&max=300" />
+
+  <img src="https://contrib.rocks/image?repo=sr-857/AstraGuard-AI" />
 </a>
 
 
-# _Want to see your avatar here? [Make your first contribution today!](CONTRIBUTING.md)_
+## _Want to see your avatar here? [Make your first contribution today!](CONTRIBUTING.md)_
 
 
 
@@ -1084,7 +1084,8 @@ analysis = analyzer.analyze_attack_surface(scan_results)
 | **⚡ Real-Time Streaming** | High-performance telemetry processing with sub-second latency | Pathway |
 | **🧠 Adaptive Memory** | Context-aware decision making based on historical anomaly patterns | Vector embeddings |
 | **🎯 Smart Prioritization** | Intelligent target selection based on exploitability and mission impact | AI reasoning |
-| **📈 Health Monitoring** | Component-level degradation tracking with automated failover | Centralized error handling |
+| **� Explainable Anomaly Insights** | Per-anomaly explanations including feature importances, SHAP values, and confidence scores to increase operator trust and transparency | React + visualization components |
+| **�📈 Health Monitoring** | Component-level degradation tracking with automated failover | Centralized error handling |
 
 ---
 
@@ -1976,6 +1977,9 @@ git clone git@github.com:sr-857/AstraGuard-AI.git
 
 # Navigate to project directory
 cd AstraGuard-AI
+
+# Verify clone was successful
+ls -la
 ```
 
 #### Step 2: Set Up Python Environment
@@ -1983,6 +1987,9 @@ cd AstraGuard-AI
 **Option A: Using venv (Recommended)**
 
 ```bash
+# Check Python version (must be 3.9+)
+python --version
+
 # Create virtual environment
 python -m venv venv
 
@@ -1992,34 +1999,50 @@ source venv/bin/activate
 # On Windows:
 venv\Scripts\activate
 
-# Upgrade pip
+# Verify activation (you should see (venv) in your prompt)
+which python  # Should point to venv/bin/python or venv\Scripts\python.exe
+
+# Upgrade pip to latest version
 pip install --upgrade pip
 
-# Install dependencies
+# Install Python dependencies
 pip install -r requirements.txt
+
+# Verify installation
+python -c "import fastapi, pydantic, scapy; print('✅ All core dependencies installed')"
 ```
 
 **Option B: Using conda**
 
 ```bash
 # Create conda environment
-conda create -n astraguard python=3.11
+conda create -n astraguard python=3.11 -y
 
 # Activate environment
 conda activate astraguard
 
 # Install dependencies
 pip install -r requirements.txt
+
+# Verify environment
+conda info --envs  # Should show astraguard as active
 ```
 
 #### Step 3: Install Node.js Dependencies (for Dashboard)
 
 ```bash
+# Check Node.js version (must be 16+)
+node --version
+npm --version
+
 # Navigate to dashboard directory
 cd dashboard
 
-# Install dependencies
+# Install Node.js dependencies
 npm install
+
+# Verify installation
+npm list --depth=0
 
 # Return to project root
 cd ..
@@ -2032,76 +2055,177 @@ cd ..
 cp .env.example .env
 
 # Edit .env with your preferred editor
-nano .env  # or vim, code, etc.
+# On Linux/macOS:
+nano .env
+# On Windows:
+notepad .env
+# Or use VS Code:
+code .env
 ```
 
 **Required Environment Variables**:
 
 ```bash
 # .env file
+# ==========================================
 # API Configuration
+# ==========================================
 API_HOST=0.0.0.0
 API_PORT=8000
 API_DEBUG=True
+API_WORKERS=1
 
+# ==========================================
 # Database Configuration
+# ==========================================
 MONGODB_URI=mongodb://localhost:27017
 MONGODB_DB=astraguard
+MONGODB_TIMEOUT=5000
 
+# ==========================================
 # AI Model Configuration
+# ==========================================
 OLLAMA_MODEL=llama3
 OLLAMA_HOST=http://localhost:11434
+OLLAMA_TIMEOUT=30
 
+# ==========================================
 # Mission Configuration
+# ==========================================
 DEFAULT_MISSION_PHASE=NOMINAL_OPS
+MISSION_CONFIG_PATH=config/mission_policies.yaml
 
-# Logging
+# ==========================================
+# Logging Configuration
+# ==========================================
 LOG_LEVEL=INFO
 LOG_FILE=logs/astraguard.log
+LOG_MAX_SIZE=10MB
+LOG_BACKUP_COUNT=5
+
+# ==========================================
+# Security Configuration
+# ==========================================
+SECRET_KEY=your-secret-key-here-change-in-production
+JWT_SECRET=your-jwt-secret-here
+API_KEY=your-api-key-here
+
+# ==========================================
+# Monitoring Configuration
+# ==========================================
+PROMETHEUS_ENABLED=True
+PROMETHEUS_PORT=9090
+GRAFANA_ENABLED=True
 ```
 
-#### Step 5: Install Ollama (for Local AI)
+#### Step 5: Install and Configure Ollama (for Local AI)
 
 **Linux/macOS**:
 ```bash
-curl https://ollama.ai/install.sh | sh
+# Download and install Ollama
+curl -fsSL https://ollama.ai/install.sh | sh
+
+# Verify installation
+ollama --version
+
+# Start Ollama service (runs in background)
+ollama serve &
 ```
 
 **Windows**:
-Download from https://ollama.ai/download
-
-**Pull AI Model**:
 ```bash
-# Pull Llama 3 model (recommended)
+# Download from https://ollama.ai/download
+# Install the .exe file
+# Start Ollama from Start Menu or command line
+ollama serve
+```
+
+**Pull Required AI Models**:
+```bash
+# Pull Llama 3 model (recommended for best performance)
 ollama pull llama3
 
-# Or pull Mistral model
+# Alternative: Pull Mistral model (lighter weight)
 ollama pull mistral
-```
 
-#### Step 6: Initialize Database (Optional)
-
-```bash
-# Start MongoDB (if not already running)
-# Linux/macOS:
-sudo systemctl start mongodb
-
-# Or using Docker:
-docker run -d -p 27017:27017 --name mongodb mongo:latest
-```
-
-#### Step 7: Verify Installation
-
-```bash
-# Run health check
-python cli.py status
+# Verify models are available
+ollama list
 
 # Expected output:
-# ✅ Python environment: OK
+# NAME                    ID              SIZE    MODIFIED
+# llama3:latest           365c0bd3c000    4.7 GB  2 minutes ago
+# mistral:latest          61e88e884507    4.1 GB  1 minute ago
+```
+
+#### Step 6: Set Up Database (MongoDB)
+
+**Option A: Using Docker (Recommended)**
+
+```bash
+# Install Docker if not already installed
+# Linux/macOS: https://docs.docker.com/get-docker/
+# Windows: https://docs.docker.com/docker-for-windows/install/
+
+# Start MongoDB container
+docker run -d \
+  --name astraguard-mongodb \
+  -p 27017:27017 \
+  -v mongodb_data:/data/db \
+  --restart unless-stopped \
+  mongo:latest
+
+# Verify MongoDB is running
+docker ps | grep mongodb
+
+# Test connection
+docker exec -it astraguard-mongodb mongosh --eval "db.runCommand('ping')"
+```
+
+**Option B: Local MongoDB Installation**
+
+```bash
+# Ubuntu/Debian:
+sudo apt update
+sudo apt install mongodb
+
+# macOS:
+brew install mongodb-community
+brew services start mongodb-community
+
+# Windows: Download from mongodb.com
+
+# Verify installation
+mongod --version
+```
+
+#### Step 7: Verify Complete Installation
+
+```bash
+# Run comprehensive health check
+python cli.py status
+
+# Expected output should show all components as HEALTHY:
+# ✅ Python environment: OK (3.11.0)
 # ✅ Dependencies installed: OK
-# ✅ Ollama running: OK
+# ✅ Ollama running: OK (llama3 loaded)
 # ✅ Database connection: OK
 # ✅ Configuration valid: OK
+# ✅ All systems operational
+
+# If any component shows FAILED, check the troubleshooting section below
+```
+
+#### Step 8: Initialize the System (Optional)
+
+```bash
+# Generate sample telemetry data for testing
+python cli.py telemetry --duration 300 --output sample_data.json
+
+# Load mission phase policies
+python cli.py config --validate-policies
+
+# Run initial system tests
+python cli.py test --suite smoke
 ```
 
 ### Available Commands
@@ -2929,8 +3053,87 @@ We're looking for contributors in these areas:
 
 ## 🛠️ Troubleshooting
 
-<details>
-<summary><strong>🐍 Python Version Errors</strong></summary>
+### Quick Diagnosis
+
+Before diving into specific issues, run this diagnostic script:
+
+```bash
+# Create diagnostic script
+cat > diagnose.py << 'EOF'
+#!/usr/bin/env python3
+import sys
+import subprocess
+import requests
+import json
+
+def run_command(cmd, description):
+    """Run command and return success status"""
+    try:
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=10)
+        success = result.returncode == 0
+        print(f"{'✅' if success else '❌'} {description}: {'OK' if success else 'FAILED'}")
+        if not success:
+            print(f"   Error: {result.stderr.strip()}")
+        return success
+    except Exception as e:
+        print(f"❌ {description}: FAILED")
+        print(f"   Error: {e}")
+        return False
+
+def check_service(url, name):
+    """Check if service is responding"""
+    try:
+        response = requests.get(url, timeout=5)
+        success = response.status_code == 200
+        print(f"{'✅' if success else '❌'} {name}: {'OK' if success else 'FAILED'}")
+        if not success:
+            print(f"   Status: {response.status_code}")
+        return success
+    except Exception as e:
+        print(f"❌ {name}: FAILED")
+        print(f"   Error: {e}")
+        return False
+
+print("🔍 AstraGuard AI Diagnostic Report")
+print("=" * 40)
+
+# System checks
+print("\n📋 System Requirements:")
+run_command("python --version", "Python version (3.9+)")
+run_command("node --version", "Node.js version (16+)")
+run_command("npm --version", "NPM version")
+run_command("docker --version", "Docker version")
+
+# Environment checks
+print("\n🐍 Python Environment:")
+run_command("python -c 'import fastapi, pydantic, scapy'", "Core dependencies")
+run_command("python -c 'import ollama'", "Ollama client")
+
+# Service checks
+print("\n🌐 Services:")
+check_service("http://localhost:11434/api/version", "Ollama API")
+check_service("http://localhost:27017", "MongoDB")
+check_service("http://localhost:8000/api/v1/status", "AstraGuard API")
+check_service("http://localhost:8501", "Dashboard")
+
+# Configuration checks
+print("\n⚙️ Configuration:")
+run_command("test -f .env", ".env file exists")
+run_command("test -f config/mission_policies.yaml", "Mission policies")
+run_command("test -d logs", "Logs directory")
+
+print("\n📝 Next Steps:")
+print("1. Fix any FAILED items above")
+print("2. Check logs/astraguard.log for errors")
+print("3. Run 'python cli.py status' for detailed status")
+print("4. See troubleshooting section below for specific issues")
+EOF
+
+# Run diagnostic
+python diagnose.py
+```
+
+### Common Installation Issues
 
 **Issue**: Installation fails with "Python 3.9+ required"
 
@@ -3211,17 +3414,86 @@ docker system df
 
 ### Still Having Issues?
 
+If you're still stuck after trying the solutions above:
+
 1. **📖 Check Documentation**: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
 2. **🔍 Search Issues**: [GitHub Issues](https://github.com/sr-857/AstraGuard-AI/issues)
 3. **💬 Ask Community**: [WhatsApp Group](https://chat.whatsapp.com/HZXk0vo62945S33qTXheON)
 4. **🐛 Report Bug**: [Bug Report Template](.github/ISSUE_TEMPLATE/bug_report.yml)
 
-When reporting issues, include:
-- OS and version
+**When reporting issues, include**:
+- OS and version (`systeminfo` on Windows, `uname -a` on Linux/macOS)
 - Python version (`python --version`)
-- Full error message
-- Steps to reproduce
+- Full error message and stack trace
 - Output of `python cli.py status`
+- Recent logs (`python cli.py logs --tail 50`)
+- Steps to reproduce the issue
+- Expected vs actual behavior
+
+**Debug Information Script**:
+```bash
+# Run this to gather debug info
+cat > debug_info.py << 'EOF'
+#!/usr/bin/env python3
+import sys
+import platform
+import subprocess
+
+print("🔍 AstraGuard AI Debug Information")
+print("=" * 40)
+
+print(f"OS: {platform.system()} {platform.release()}")
+print(f"Python: {sys.version}")
+print(f"Executable: {sys.executable}")
+
+print("\n📦 Installed Packages:")
+try:
+    result = subprocess.run([sys.executable, "-m", "pip", "list"], 
+                          capture_output=True, text=True)
+    for line in result.stdout.split('\n')[:20]:  # First 20 packages
+        if line.strip():
+            print(f"  {line}")
+    if len(result.stdout.split('\n')) > 20:
+        print("  ... (truncated)")
+except:
+    print("  Could not retrieve package list")
+
+print("\n🌐 Environment Variables:")
+import os
+for key in ['OLLAMA_HOST', 'MONGODB_URI', 'API_HOST', 'API_PORT']:
+    value = os.getenv(key, 'Not set')
+    print(f"  {key}: {value}")
+
+print("\n🔧 System Status:")
+try:
+    import requests
+    services = [
+        ("Ollama", "http://localhost:11434/api/version"),
+        ("MongoDB", "http://localhost:27017"),
+        ("API", "http://localhost:8000/api/v1/status"),
+        ("Dashboard", "http://localhost:8501")
+    ]
+    for name, url in services:
+        try:
+            resp = requests.get(url, timeout=3)
+            print(f"  {name}: {resp.status_code}")
+        except:
+            print(f"  {name}: Connection failed")
+except:
+    print("  Could not check services")
+
+print("\n📁 File Structure:")
+import os
+files_to_check = ['.env', 'requirements.txt', 'config/mission_policies.yaml', 'logs/']
+for file in files_to_check:
+    exists = os.path.exists(file)
+    print(f"  {file}: {'Exists' if exists else 'Missing'}")
+EOF
+
+python debug_info.py
+```
+
+**Include this output when asking for help!**
 
 ---
 

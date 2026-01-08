@@ -105,7 +105,6 @@ def run_status(args: argparse.Namespace) -> None:
     """Display comprehensive system status and health information."""
     try:
         from core.component_health import get_health_monitor, HealthStatus
-        from state_machine.state_engine import StateMachine
         import platform
 
         print("\n" + "=" * 70)
@@ -119,8 +118,12 @@ def run_status(args: argparse.Namespace) -> None:
         print("\n📊 COMPONENT HEALTH STATUS")
         print("-" * 70)
 
-        health_monitor = get_health_monitor()
-        components = health_monitor.get_all_health()
+        try:
+            health_monitor = get_health_monitor()
+            components = health_monitor.get_all_health()
+        except Exception as e:
+            print(f"  ⚠️  Unable to get health status: {e}")
+            components = {}
 
         degraded_count = 0
         failed_count = 0
@@ -154,12 +157,19 @@ def run_status(args: argparse.Namespace) -> None:
         print("\n🚀 MISSION PHASE")
         print("-" * 70)
         try:
+            from state_machine.state_engine import StateMachine
             sm = StateMachine()
             phase = sm.current_phase.value
             print(f"  Current Phase: {phase}")
             print(f"  Description:   {_get_phase_description(phase)}")
-        except Exception:
-            print("  ⚠️  Unable to determine mission phase.")
+        except ImportError as e:
+            if "prometheus" in str(e):
+                print("  ⚠️  Mission phase unavailable (missing prometheus dependencies)")
+                print("     Install prometheus-client to see mission phase information")
+            else:
+                print(f"  ⚠️  Unable to determine mission phase: {e}")
+        except Exception as e:
+            print(f"  ⚠️  Unable to determine mission phase: {e}")
 
         print("\n💡 RECOMMENDATIONS")
         print("-" * 70)
@@ -176,8 +186,9 @@ def run_status(args: argparse.Namespace) -> None:
             sys.exit(2)
         sys.exit(0)
 
-    except ImportError:
-        print("❌ Missing dependencies. Try installing from requirements.txt.")
+    except ImportError as e:
+        print(f"❌ Missing core dependencies: {e}")
+        print("Try installing from requirements.txt.")
         sys.exit(3)
 
 
@@ -195,8 +206,52 @@ def run_simulation() -> None:
     subprocess.run([sys.executable, os.path.join("simulation", "attitude_3d.py")])
 
 
-def run_classifier() -> None:
-    subprocess.run([sys.executable, os.path.join("classifier", "fault_classifier.py")])
+def run_report(args: argparse.Namespace) -> None:
+    """Generate and export anomaly reports."""
+    try:
+        from anomaly.report_generator import get_report_generator
+        from datetime import datetime, timedelta
+        
+        report_generator = get_report_generator()
+        
+        # Calculate time range
+        end_time = datetime.now()
+        start_time = end_time - timedelta(hours=args.hours)
+        
+        # Generate default output filename
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        if args.output:
+            output_file = args.output
+        else:
+            ext = "json" if args.format == "json" else "txt"
+            output_file = f"anomaly_report_{timestamp}.{ext}"
+        
+        print(f"Generating {args.format.upper()} anomaly report...")
+        print(f"Time range: {start_time.strftime('%Y-%m-%d %H:%M:%S')} to {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        
+        if args.format == "json":
+            file_path = report_generator.export_json(output_file, start_time, end_time)
+        else:  # text format
+            file_path = report_generator.export_text(output_file, start_time, end_time)
+        
+        print(f"✅ Report exported to: {file_path}")
+        
+        # Show brief summary
+        report = report_generator.generate_report(start_time, end_time)
+        summary = report.get("summary", {})
+        print("\n📊 Summary:")
+        print(f"  Total Anomalies: {summary.get('total_anomalies', 0)}")
+        print(f"  Resolved: {summary.get('resolved_anomalies', 0)}")
+        print(f"  Critical: {summary.get('critical_anomalies', 0)}")
+        if summary.get('average_mttr_seconds'):
+            print(f"  Avg MTTR: {summary['average_mttr_seconds']:.1f}s")
+        
+    except ImportError:
+        print("❌ Anomaly reporting not available. Missing dependencies.")
+        sys.exit(1)
+    except Exception as e:
+        print(f"❌ Failed to generate report: {e}")
+        sys.exit(1)
 
 
 def main() -> None:
@@ -213,6 +268,11 @@ def main() -> None:
     sub.add_parser("simulate", help="Run 3D attitude simulation")
     sub.add_parser("classify", help="Run fault classifier tests")
 
+    rp = sub.add_parser("report", help="Generate anomaly reports")
+    rp.add_argument("format", choices=["json", "text"], help="Report format")
+    rp.add_argument("--output", "-o", help="Output file path")
+    rp.add_argument("--hours", type=int, default=24, help="Hours of history to include (default: 24)")
+
     fp = sub.add_parser("feedback", help="Operator feedback review interface")
     fp.add_argument("action", choices=["review"])
 
@@ -228,6 +288,8 @@ def main() -> None:
         run_simulation()
     elif args.command == "classify":
         run_classifier()
+    elif args.command == "report":
+        run_report(args)
     elif args.command == "feedback" and args.action == "review":
         FeedbackCLI.review_interactive()
     else:

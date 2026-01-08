@@ -16,6 +16,7 @@ import yaml
 import json
 from typing import Dict, Any, Optional
 from pathlib import Path
+from .config_loader import load_config_file, find_config_file
 
 logger = logging.getLogger(__name__)
 
@@ -131,29 +132,22 @@ class MissionPhasePolicyLoader:
         Try to find policy config in default locations.
         
         Default search paths (in order):
-        1. config/mission_phase_response_policy.yaml
-        2. config/mission_phase_response_policy.json
-        3. ../config/mission_phase_response_policy.yaml (relative to this file)
+        1. config/mission_phase_response_policy
+        2. config/mission_policies
+        3. ../config/mission_phase_response_policy (relative to this file)
         """
-        search_paths = [
-            "config/mission_phase_response_policy.yaml",
-            "config/mission_phase_response_policy.json",
-            "config/mission_policies.yaml",
-        ]
+        search_paths = ["config", str(Path(__file__).parent.parent / "config")]
         
-        # Also try relative to this file
-        script_dir = Path(__file__).parent.parent
-        search_paths.extend([
-            str(script_dir / "config" / "mission_phase_response_policy.yaml"),
-            str(script_dir / "config" / "mission_phase_response_policy.json"),
-            str(script_dir / "config" / "mission_policies.yaml"),
-        ])
-        
-        for path in search_paths:
-            if os.path.exists(path):
-                logger.info(f"Found policy config at: {path}")
-                return path
-        
+        # Try mission_phase_response_policy first
+        config_path = find_config_file("mission_phase_response_policy", search_paths)
+        if config_path:
+            return config_path
+            
+        # Fallback to mission_policies
+        config_path = find_config_file("mission_policies", search_paths)
+        if config_path:
+            return config_path
+            
         return None
     
     def _load(self):
@@ -181,16 +175,9 @@ class MissionPhasePolicyLoader:
             self.policy = self.DEFAULT_POLICY.copy()
     
     def _load_file(self, path: str) -> Dict[str, Any]:
-        """Load policy from YAML or JSON file."""
-        with open(path, 'r') as f:
-            if path.endswith('.json'):
-                return json.load(f)
-            else:
-                # Try YAML
-                data = yaml.safe_load(f)
-                if data is None:
-                    raise ValueError("Loaded policy file is empty")
-                return data
+        """Load policy from YAML or JSON file with environment variable substitution."""
+        from .config_utils import load_config_with_env_vars
+        return load_config_with_env_vars(path)
     
     def _validate_policy(self):
         """Validate policy structure."""

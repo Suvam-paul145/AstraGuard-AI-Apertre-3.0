@@ -1,0 +1,38 @@
+{
+  "enabled": true,
+  "poll_interval": 30,
+  "thresholds": {
+    "circuit_open_duration": 300,
+    "retry_failures_1h": 50,
+    "min_anomaly_accuracy": 0.8,
+    "failed_components": 2
+  },
+  "cooldowns": {
+    "circuit_restart": 300,
+    "cache_purge": 600,
+    "safe_mode": 300
+  },
+  "recovery_actions": {
+    "circuit_restart": {
+      "enabled": true,
+      "timeout": 30
+    },
+    "cache_purge": {
+      "enabled": true,
+      "timeout": 60
+    },
+    "safe_mode": {
+      "enabled": true,
+      "timeout": 10
+    }
+  },
+  "logging": {
+    "level": "INFO",
+    "slack_webhook": "",
+    "slack_events": [
+      "recovery_action_executed",
+      "recovery_action_failed",
+      "multiple_failures_detected"
+    ]
+  }
+}
