@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AnomalyEvent } from '../../types/dashboard';
+import { useReportExport } from '../../hooks/useReportExport';
 
 interface Props {
     anomaly: AnomalyEvent;
@@ -16,6 +17,11 @@ interface AnalysisResult {
 export const AnomalyInvestigator: React.FC<Props> = ({ anomaly, onClose }) => {
     const [loading, setLoading] = useState(true);
     const [result, setResult] = useState<AnalysisResult | null>(null);
+    const { generateReport } = useReportExport();
+
+    const handleExport = () => {
+        generateReport(anomaly);
+    };
 
     useEffect(() => {
         const fetchAnalysis = async () => {
@@ -58,6 +64,14 @@ export const AnomalyInvestigator: React.FC<Props> = ({ anomaly, onClose }) => {
                         <div className="text-[10px] text-blue-400 uppercase tracking-wider">Automated Diagnostics</div>
                     </div>
                 </div>
+                <button
+                    onClick={handleExport}
+                    title="Export PDF Report"
+                    className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-green-400 hover:bg-slate-800 rounded transition-colors mr-2"
+                >
+                    {/* FileText Icon simplified */}
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                </button>
                 <button
                     onClick={onClose}
                     className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-800 rounded transition-colors"

@@ -41,3 +41,16 @@ Implemented a high-contrast "Battle Mode" for critical situations.
 - **Test**: Click "Shield/Battle" icon in header.
 - **Result**: View switches to red high-contrast mode with large terminal.
 - **Exit**: Click "⚠️ BATTLE" to return to normal.
+
+## 4. Post-Mission Analysis Reports
+Implemented professional PDF generation needed for incident reporting.
+
+### Features
+- **One-Click Export**: "Export Report" button in the Anomaly Investigator.
+- **PDF Generation**: Uses `jspdf` to create a classified-style report.
+- **Content**: Includes Incident Summary, Severity, Satellite ID, Telemetry Values, and AI Analysis.
+
+### Verification
+- **Test**: Open any anomaly. Click the Document icon next to the close button.
+- **Result**: A PDF named `AstraGuard_Report_[ID].pdf` is downloaded.
+- **Check**: Verify "TOP SECRET" headers and correct data values.
