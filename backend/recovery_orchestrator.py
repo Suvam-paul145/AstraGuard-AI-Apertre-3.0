@@ -23,6 +23,12 @@ from dataclasses import dataclass, field
 import yaml
 import os
 
+# Import report generator for anomaly reporting
+try:
+    from anomaly.report_generator import get_report_generator
+except ImportError:
+    get_report_generator = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -392,6 +398,9 @@ class RecoveryOrchestrator:
             self._update_metrics(action)
             self._record_action_history(action)
             self._record_cooldown(action_type)
+            
+            # Record for anomaly reporting
+            self._record_recovery_action_for_reporting(action, reason)
 
         except Exception as e:
             action.success = False
@@ -405,6 +414,9 @@ class RecoveryOrchestrator:
 
             self._update_metrics(action)
             self._record_action_history(action)
+            
+            # Record failed recovery action for reporting
+            self._record_recovery_action_for_reporting(action, reason)
 
     async def _action_circuit_restart(self):
         """Recovery action: Restart model loader to recover circuit."""
@@ -561,3 +573,39 @@ class RecoveryOrchestrator:
             }
             for action_type in self._action_handlers.keys()
         }
+    
+    def _record_recovery_action_for_reporting(self, action: RecoveryAction, reason: str) -> None:
+        """
+        Record recovery action for anomaly reporting.
+        
+        Args:
+            action: The RecoveryAction dataclass instance
+            reason: The reason for the action
+        """
+        if get_report_generator is None:
+            return
+            
+        try:
+            report_generator = get_report_generator()
+            
+            # Determine anomaly type from reason or action type
+            # This is a heuristic - in a real system, this would be passed explicitly
+            anomaly_type = "unknown"
+            if "circuit" in action.action_type.lower():
+                anomaly_type = "circuit_failure"
+            elif "cache" in action.action_type.lower():
+                anomaly_type = "memory_pressure"
+            elif "safe" in action.action_type.lower():
+                anomaly_type = "system_stress"
+            
+            report_generator.record_recovery_action(
+                action_type=action.action_type,
+                anomaly_type=anomaly_type,
+                success=action.success,
+                duration_seconds=action.duration_seconds,
+                error_message=action.error,
+                metadata={"reason": reason, "orchestrator": "basic"}
+            )
+            
+        except Exception as e:
+            logger.warning(f"Failed to record recovery action for reporting: {e}")
