@@ -8,7 +8,7 @@ class PolicyManager:
         self.policies = self._load_policies(config_path)
 
     def _load_policies(self, path: str) -> Dict[str, Any]:
-        """Load policies from YAML file."""
+        """Load policies from YAML file with environment variable substitution."""
         if not os.path.exists(path):
             # Fallback if config not found (e.g. running from different root)
             alt_path = os.path.join(
@@ -20,8 +20,8 @@ class PolicyManager:
                 print(f"Warning: Policy config not found at {path}. Using defaults.")
                 return {}
 
-        with open(path, "r") as f:
-            return yaml.safe_load(f).get("phases", {})
+        from config.config_utils import load_yaml_config
+        return load_yaml_config(path).get("phases", {})
 
     def get_phase_config(self, phase_name: str) -> Dict[str, Any]:
         """Get configuration for a specific phase."""

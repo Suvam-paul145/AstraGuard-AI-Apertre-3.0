@@ -1,0 +1,71 @@
+# AstraGuard AI - Recovery Orchestrator Configuration with Environment Variables
+# Autonomous self-healing settings for Issue #17
+# Demonstrates environment variable substitution
+
+# Enable/disable the recovery orchestrator
+enabled: ${RECOVERY_ENABLED:true}
+
+# Health evaluation interval (seconds)
+# How often to check metrics and trigger recovery actions
+poll_interval: ${POLL_INTERVAL:30}
+
+# Redis configuration for distributed coordination
+redis:
+  host: ${REDIS_HOST:localhost}
+  port: ${REDIS_PORT:6379}
+  password: ${REDIS_PASSWORD:}
+  db: ${REDIS_DB:0}
+  url: redis://${REDIS_HOST:localhost}:${REDIS_PORT:6379}/${REDIS_DB:0}
+
+# Recovery action thresholds
+# Actions trigger when metrics exceed these values
+thresholds:
+  # Circuit breaker stuck OPEN for this many seconds
+  circuit_open_duration: ${CIRCUIT_OPEN_DURATION:300}
+
+  # High retry failure rate (failures per hour)
+  retry_failures_1h: ${RETRY_FAILURES_1H:50}
+
+  # Minimum acceptable anomaly detection accuracy
+  min_anomaly_accuracy: ${MIN_ANOMALY_ACCURACY:0.80}
+
+  # Trigger safe mode when this many components fail
+  failed_components: ${FAILED_COMPONENTS:2}
+
+# Cooldown periods (seconds) between executing same action
+# Prevents "thrashing" - repeatedly triggering same action
+cooldowns:
+  # Time between circuit restart attempts
+  circuit_restart: ${COOLDOWN_CIRCUIT_RESTART:300}
+
+  # Time between cache purge operations
+  cache_purge: ${COOLDOWN_CACHE_PURGE:600}
+
+  # Time between safe mode activations
+  safe_mode: ${COOLDOWN_SAFE_MODE:300}
+
+# Recovery action configuration
+recovery_actions:
+  circuit_restart:
+    enabled: ${CIRCUIT_RESTART_ENABLED:true}
+    timeout: ${CIRCUIT_RESTART_TIMEOUT:30}
+
+  cache_purge:
+    enabled: ${CACHE_PURGE_ENABLED:true}
+    timeout: ${CACHE_PURGE_TIMEOUT:60}
+
+  safe_mode:
+    enabled: ${SAFE_MODE_ENABLED:true}
+    timeout: ${SAFE_MODE_TIMEOUT:120}
+
+# Logging configuration
+logging:
+  level: ${LOG_LEVEL:INFO}
+  format: ${LOG_FORMAT:"%(asctime)s - %(name)s - %(levelname)s - %(message)s"}
+  file: ${LOG_FILE:/var/log/astraguard.log}
+
+# External service endpoints
+services:
+  monitoring_endpoint: ${MONITORING_ENDPOINT:http://localhost:9090}
+  alert_webhook: ${ALERT_WEBHOOK:http://localhost:8080/alerts}
+  health_check_url: ${HEALTH_CHECK_URL:http://localhost:8000/health}
