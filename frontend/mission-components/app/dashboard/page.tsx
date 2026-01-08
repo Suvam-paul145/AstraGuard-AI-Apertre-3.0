@@ -37,20 +37,34 @@ import { GlitchOverlay } from '../components/effects/GlitchOverlay';
 import { SpaceWeatherAlert } from '../components/effects/SpaceWeatherAlert';
 import { RedPhoneReset } from '../components/controls/RedPhoneReset';
 import { DashboardDimOverlay } from '../components/effects/DashboardDimOverlay';
+import { ProximityAlertPanel } from '../components/radar/ProximityAlertPanel';
 
 const DashboardContent: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'mission' | 'systems' | 'chaos' | 'uplink' | 'vault' | 'diagnostics'>('mission');
   const [selectedAnomalyForAnalysis, setSelectedAnomalyForAnalysis] = useState<AnomalyEvent | null>(null);
-  const { isConnected, togglePlay, isReplayMode, isBattleMode, setBattleMode, spaceWeather, distortionIntensity, isGeomagneticStorm, executeSystemReset } = useDashboard();
+  const { isConnected, togglePlay, isReplayMode, isBattleMode, setBattleMode, spaceWeather, distortionIntensity, isGeomagneticStorm, executeSystemReset, debrisObjects, closestDebris, proximityLevel } = useDashboard();
   const [showSpaceWeatherAlert, setShowSpaceWeatherAlert] = useState(false);
   const [isRedPhoneCoverOpen, setIsRedPhoneCoverOpen] = useState(false);
+  const [showProximityAlert, setShowProximityAlert] = useState(true);
   const mission = { ...dashboardData.mission, aiHealth: (dashboardData as any).aiHealth, achievements: (dashboardData as any).achievements } as MissionState;
   const [showPalette, setShowPalette] = useState(false);
 
   // Audio Engine Integration
   const [activeAudio, setActiveAudio] = useState(false);
-  const { startDrone, stopDrone, updateDrone, playClick } = useSoundEffects();
+  const { startDrone, stopDrone, updateDrone, playClick, playProximityBeep } = useSoundEffects();
   const { startHum, startWhoosh, playGeigerClick, stopAll: stopSoundscape } = useSoundscape();
+
+  // Proximity Beeping
+  React.useEffect(() => {
+    if (!closestDebris || proximityLevel === 'SAFE') return;
+
+    const interval = playProximityBeep(closestDebris.distance);
+    const beepInterval = setInterval(() => {
+      playProximityBeep(closestDebris.distance);
+    }, interval);
+
+    return () => clearInterval(beepInterval);
+  }, [closestDebris, proximityLevel, playProximityBeep]);
 
   // Update drone based on system state
   useEffect(() => {
@@ -152,6 +166,15 @@ const DashboardContent: React.FC = () => {
       <div className="fixed top-6 right-6 z-50">
         <RedPhoneReset onResetConfirm={executeSystemReset} />
       </div>
+
+      {/* Proximity Alert Panel */}
+      {showProximityAlert && (
+        <ProximityAlertPanel
+          debrisObjects={debrisObjects}
+          closestDebris={closestDebris}
+          onDismiss={() => setShowProximityAlert(false)}
+        />
+      )}
 
       <div className="flex min-h-screen pt-[100px] lg:pt-[80px] flex-col">
         <nav className="sticky top-[100px] lg:top-[80px] z-20 bg-black/80 backdrop-blur-xl border-b border-teal-500/30 px-6 flex flex-col md:flex-row md:items-center justify-between flex-shrink-0 mb-4" role="tablist">

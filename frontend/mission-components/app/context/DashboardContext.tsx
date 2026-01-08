@@ -8,6 +8,8 @@ import { GroundStation, RemediationScript, RemediationStep, AICognitiveState, Hi
 import { EncryptionMetrics } from '../types/security';
 import { SpaceWeatherData } from '../types/spaceWeather';
 import { useSpaceWeather } from '../hooks/useSpaceWeather';
+import { DebrisObject, ProximityLevel } from '../types/debris';
+import { useDebrisTracking } from '../hooks/useDebrisTracking';
 
 export interface Annotation {
     id: string;
@@ -77,6 +79,11 @@ interface ContextValue {
     // System Reset
     executeSystemReset: () => void;
     isResetInProgress: boolean;
+    // Debris Tracking
+    debrisObjects: DebrisObject[];
+    closestDebris: DebrisObject | null;
+    proximityLevel: ProximityLevel;
+    criticalDebrisCount: number;
 }
 
 const DashboardContext = createContext<ContextValue | undefined>(undefined);
@@ -85,6 +92,7 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
     const ws = useDashboardWebSocket();
     const stateBuffer = useStateBuffer();
     const { spaceWeather, distortionIntensity, isGeomagneticStorm } = useSpaceWeather();
+    const { debrisObjects, closestDebris, proximityLevel, criticalDebrisCount } = useDebrisTracking();
     const [isBattleMode, setBattleMode] = useState(false);
     const [annotations, setAnnotations] = useState<Annotation[]>([]);
     const [presence] = useState<Operator[]>([
@@ -399,6 +407,10 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
         isGeomagneticStorm,
         executeSystemReset,
         isResetInProgress,
+        debrisObjects,
+        closestDebris,
+        proximityLevel,
+        criticalDebrisCount,
     };
 
     return (

@@ -155,5 +155,20 @@ export const useSoundEffects = () => {
         setTimeout(() => playTone(1000, 'sine', 0.4, 0.05), 100);
     }, []);
 
-    return { playClick, playAlert, playKeystroke, playSuccess, startDrone, stopDrone, updateDrone };
+    const playProximityBeep = useCallback((distance: number) => {
+        // Parking sensor style beep - frequency increases as distance decreases
+        // Distance range: 5-50km
+        // Beep interval: 2000ms at 50km → 200ms at 5km
+        const clampedDistance = Math.max(5, Math.min(50, distance));
+        const interval = 200 + ((clampedDistance - 5) / 45) * 1800;
+
+        // Higher pitch for closer objects
+        const frequency = 800 - ((clampedDistance - 5) / 45) * 400; // 800Hz at 5km → 400Hz at 50km
+
+        playTone(frequency, 'square', 0.1, 0.05);
+
+        return interval;
+    }, []);
+
+    return { playClick, playAlert, playKeystroke, playSuccess, playProximityBeep, startDrone, stopDrone, updateDrone };
 };
