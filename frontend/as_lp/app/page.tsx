@@ -7,6 +7,7 @@ import { Footer } from "@/components/footer"
 import { CustomCursor } from "@/components/custom-cursor"
 import { SmoothScroll } from "@/components/smooth-scroll"
 import { SectionBlend } from "@/components/section-blend"
+import { ApiDemo } from "@/components/api-demo"
 
 export default function Home() {
   return (
@@ -18,6 +19,7 @@ export default function Home() {
         <SectionBlend />
         <About />
         <Works />
+        <ApiDemo />
         <TechMarquee />
         <Footer />
       </main>
