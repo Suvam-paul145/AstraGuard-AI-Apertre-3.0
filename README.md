@@ -66,7 +66,7 @@
   - [Data Flow](#data-flow)
 - [✨ Key Features](#-key-features)
   - [Core Capabilities](#core-capabilities)
-  - [Mission-Phase Aware Policies](#-mission-phase-aware-fault-response)
+  - [Mission-Phase Aware Fault Response](#-mission-phase-aware-fault-response)
   - [Error Handling & Resilience](#️-centralized-error-handling--graceful-degradation)
   - [REST API Integration](#-rest-api-for-external-integration)
 - [🎯 Project Goals (ECWoC '26)](#-project-goals-ecwoc-26)
