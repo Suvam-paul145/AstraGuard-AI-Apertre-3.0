@@ -24,6 +24,7 @@ from astraguard.swarm.types import (
     MessageAck,
 )
 from astraguard.swarm.bus import SwarmMessageBus
+from astraguard.swarm.compressor import StateCompressor, CompressionStats
 
 __all__ = [
     # Models (Issue #397)
@@ -42,4 +43,7 @@ __all__ = [
     "MessageAck",
     # Message bus (Issue #398)
     "SwarmMessageBus",
+    # Compression (Issue #399)
+    "StateCompressor",
+    "CompressionStats",
 ]
