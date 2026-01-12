@@ -17,15 +17,102 @@ import psutil
 import logging
 import os
 import threading
+import functools
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Callable, Any, TypeVar
 from datetime import datetime, timedelta
 from enum import Enum
 
 # Import centralized secrets management
 from core.secrets import get_secret
 
+T = TypeVar('T')
+
 logger = logging.getLogger(__name__)
+
+
+def monitor_operation_resources(operation_name: Optional[str] = None):
+    """
+    Decorator to monitor CPU and memory usage during operation execution.
+
+    Logs resource usage before and after the operation, and warns if usage
+    exceeds thresholds during the operation.
+
+    Args:
+        operation_name: Optional name for the operation (defaults to function name)
+
+    Returns:
+        Decorated function that monitors resource usage
+
+    Example:
+        @monitor_operation_resources()
+        def heavy_computation():
+            # Resource usage will be monitored
+            pass
+    """
+    def decorator(func: Callable[..., T]) -> Callable[..., T]:
+        @functools.wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> T:
+            op_name = operation_name or func.__name__
+            monitor = get_resource_monitor()
+
+            # Get initial metrics
+            initial_metrics = monitor.get_current_metrics()
+
+            logger.debug(
+                f"Starting operation '{op_name}' - "
+                f"CPU: {initial_metrics.cpu_percent:.1f}%, "
+                f"Memory: {initial_metrics.memory_percent:.1f}% "
+                f"({initial_metrics.process_memory_mb:.1f}MB)"
+            )
+
+            try:
+                # Execute the function
+                result = func(*args, **kwargs)
+
+                # Get final metrics
+                final_metrics = monitor.get_current_metrics()
+
+                # Calculate resource usage during operation
+                cpu_used = final_metrics.cpu_percent - initial_metrics.cpu_percent
+                memory_used = final_metrics.process_memory_mb - initial_metrics.process_memory_mb
+
+                logger.debug(
+                    f"Completed operation '{op_name}' - "
+                    f"CPU delta: {cpu_used:+.1f}%, "
+                    f"Memory delta: {memory_used:+.1f}MB"
+                )
+
+                # Check for excessive resource usage
+                if cpu_used > 50.0:  # More than 50% CPU increase
+                    logger.warning(
+                        f"High CPU usage in '{op_name}': +{cpu_used:.1f}% "
+                        f"(final: {final_metrics.cpu_percent:.1f}%)"
+                    )
+
+                if memory_used > 100.0:  # More than 100MB memory increase
+                    logger.warning(
+                        f"High memory usage in '{op_name}': +{memory_used:.1f}MB "
+                        f"(final: {final_metrics.process_memory_mb:.1f}MB)"
+                    )
+
+                return result
+
+            except Exception as e:
+                # Log resource usage even on failure
+                final_metrics = monitor.get_current_metrics()
+                cpu_used = final_metrics.cpu_percent - initial_metrics.cpu_percent
+                memory_used = final_metrics.process_memory_mb - initial_metrics.process_memory_mb
+
+                logger.error(
+                    f"Operation '{op_name}' failed after using "
+                    f"CPU: +{cpu_used:.1f}%, Memory: +{memory_used:.1f}MB - {e}"
+                )
+                raise
+
+        return wrapper
+
+    return decorator
 
 
 class ResourceStatus(str, Enum):

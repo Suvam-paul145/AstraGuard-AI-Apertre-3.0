@@ -20,6 +20,10 @@ import logging
 if TYPE_CHECKING:
     import numpy as np
 
+# Import timeout and resource monitoring decorators
+from core.timeout_handler import with_timeout
+from core.resource_monitor import monitor_operation_resources
+
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +137,8 @@ class AdaptiveMemoryStore:
             if len(self.memory) > self.max_capacity:
                 self.prune(keep_critical=True)
 
+    @with_timeout(seconds=30.0)
+    @monitor_operation_resources()
     def retrieve(
         self, query_embedding: Union[List[float], "np.ndarray"], top_k: int = DEFAULT_TOP_K
     ) -> List[Tuple[float, Dict, datetime]]:
@@ -178,6 +184,8 @@ class AdaptiveMemoryStore:
         scores.sort(reverse=True, key=lambda x: x[0])
         return scores[:top_k]
 
+    @with_timeout(seconds=60.0)
+    @monitor_operation_resources()
     def prune(self, max_age_hours: int = DEFAULT_MAX_AGE_HOURS, keep_critical: bool = True) -> int:
         """
         Safe decay mechanism - remove old events.
@@ -212,6 +220,8 @@ class AdaptiveMemoryStore:
             pruned_count = initial_count - len(self.memory)
             return pruned_count
 
+    @with_timeout(seconds=30.0)
+    @monitor_operation_resources()
     def replay(self, start_time: datetime, end_time: datetime) -> List[Dict]:
         """
         Replay events from memory within time range.
@@ -242,6 +252,8 @@ class AdaptiveMemoryStore:
             # Extract metadata
             return [event.metadata for event in filtered_events]
 
+    @with_timeout(seconds=60.0)
+    @monitor_operation_resources()
     def save(self) -> None:
         """Persist memory to disk with path validation."""
         with self._lock:
@@ -264,6 +276,8 @@ class AdaptiveMemoryStore:
                 logger.error(f"Failed to save memory store: {e}", exc_info=True)
                 raise
 
+    @with_timeout(seconds=60.0)
+    @monitor_operation_resources()
     def load(self) -> bool:
         """Load memory from disk with validation and error handling."""
         with self._lock:
