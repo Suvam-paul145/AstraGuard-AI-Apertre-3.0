@@ -113,7 +113,7 @@ class AdaptiveMemoryStore:
         Raises:
             ValueError: If embedding is empty or metadata is not a dict
         """
-        if not embedding:
+        if embedding is None or len(embedding) == 0:
             raise ValueError("Embedding cannot be empty")
         if not isinstance(metadata, dict):
             raise ValueError("Metadata must be a dictionary")
@@ -174,8 +174,10 @@ class AdaptiveMemoryStore:
             recurrence_boost = 1 + RECURRENCE_BOOST_FACTOR * (np.log(1 + event.recurrence_count) if np is not None else math.log(1 + event.recurrence_count))
 
             # Combined weighted score
-            weighted_score = similarity * (
-                SIMILARITY_WEIGHT + TEMPORAL_WEIGHT * temporal_weight + RECURRENCE_WEIGHT * recurrence_boost
+            weighted_score = (
+                SIMILARITY_WEIGHT * similarity +
+                TEMPORAL_WEIGHT * temporal_weight +
+                RECURRENCE_WEIGHT * recurrence_boost
             )
 
             scores.append((weighted_score, event.metadata, event.timestamp))
