@@ -15,6 +15,11 @@ from .parser import (
     execute_scenario_file,
     run_scenario_file,
 )
+from .orchestrator import (
+    ScenarioOrchestrator,
+    execute_campaign,
+    execute_all_scenarios,
+)
 
 __all__ = [
     "FaultType",
@@ -28,4 +33,7 @@ __all__ = [
     "ScenarioExecutor",
     "execute_scenario_file",
     "run_scenario_file",
+    "ScenarioOrchestrator",
+    "execute_campaign",
+    "execute_all_scenarios",
 ]
