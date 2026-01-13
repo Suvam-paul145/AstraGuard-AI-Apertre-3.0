@@ -211,6 +211,8 @@ class AdaptiveMemoryStore:
         """
         if max_age_hours < 0:
             raise ValueError("max_age_hours must be non-negative")
+        if max_age_hours == 0:
+            return 0
         with self._lock:
             cutoff = datetime.now() - timedelta(hours=max_age_hours)
             initial_count = len(self.memory)
