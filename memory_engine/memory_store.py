@@ -324,12 +324,12 @@ class AdaptiveMemoryStore:
 
         ages = [event.age_seconds() / 3600 for event in self.memory]
 
-    return {
-        "total_events": len(self.memory),
-        "critical_events": sum(1 for e in self.memory if e.is_critical),
-        "avg_age_hours": np.mean(ages) if np is not None else sum(ages) / len(ages),
-        "max_recurrence": max(e.recurrence_count for e in self.memory),
-    }
+        return {
+            "total_events": len(self.memory),
+            "critical_events": sum(1 for e in self.memory if e.is_critical),
+            "avg_age_hours": np.mean(ages) if np is not None else sum(ages) / len(ages),
+            "max_recurrence": max(e.recurrence_count for e in self.memory),
+        }
 
     # Private helper methods
 
@@ -343,13 +343,19 @@ class AdaptiveMemoryStore:
         if len(a) != len(b):
             raise ValueError("Embeddings must have the same length for cosine similarity")
         if np is not None:
-            return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-10)
+            norm_a = np.linalg.norm(a)
+            norm_b = np.linalg.norm(b)
+            if norm_a == 0.0 or norm_b == 0.0:
+                return 0.0
+            return np.dot(a, b) / (norm_a * norm_b + EPSILON)
         else:
             # Manual calculation for lists
-            dot_product = sum(x * y for x, y in zip(a, b))
             norm_a = math.sqrt(sum(x * x for x in a))
             norm_b = math.sqrt(sum(x * x for x in b))
-            return dot_product / (norm_a * norm_b + 1e-10)
+            if norm_a == 0.0 or norm_b == 0.0:
+                return 0.0
+            dot_product = sum(x * y for x, y in zip(a, b))
+            return dot_product / (norm_a * norm_b + EPSILON)
 
     def _find_similar(
         self, embedding: Union[List[float], "np.ndarray"], threshold: float = DEFAULT_SIMILARITY_THRESHOLD
