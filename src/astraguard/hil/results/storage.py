@@ -19,11 +19,11 @@ class ResultStorage:
         self.results_dir = Path(results_dir)
         self.results_dir.mkdir(parents=True, exist_ok=True)
 
-    def save_scenario_result(
+    async def save_scenario_result(
         self, scenario_name: str, result: Dict[str, Any]
     ) -> str:
         """
-        Save individual scenario result to file.
+        Save individual scenario result to file asynchronously.
 
         Args:
             scenario_name: Name of scenario (without .yaml)
@@ -43,14 +43,15 @@ class ResultStorage:
             **result,
         }
 
-        filepath.write_text(json.dumps(result_with_metadata, indent=2, default=str))
+        # Use asyncio.to_thread for I/O operations
+        await asyncio.to_thread(filepath.write_text, json.dumps(result_with_metadata, indent=2, default=str))
         return str(filepath)
 
-    def get_scenario_results(
+    async def get_scenario_results(
         self, scenario_name: str, limit: int = 10
     ) -> List[Dict[str, Any]]:
         """
-        Retrieve recent results for a specific scenario.
+        Retrieve recent results for a specific scenario asynchronously.
 
         Args:
             scenario_name: Name of scenario
@@ -65,7 +66,7 @@ class ResultStorage:
 
         for result_file in result_files:
             try:
-                result_data = json.loads(result_file.read_text())
+                result_data = await asyncio.to_thread(json.loads, result_file.read_text())
                 results.append(result_data)
             except Exception as e:
                 print(f"[WARN] Failed to load result {result_file.name}: {e}")
