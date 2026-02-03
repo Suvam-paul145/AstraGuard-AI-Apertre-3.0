@@ -21,7 +21,9 @@ ResultStorage = storage_module.ResultStorage
 @pytest.fixture
 def orchestrator():
     """Create orchestrator instance."""
-    return ScenarioOrchestrator()
+    return ScenarioOrchestrator(
+        scenario_dir="src/astraguard/hil/scenarios/sample_scenarios"
+    )
 
 
 @pytest.fixture
