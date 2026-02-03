@@ -21,9 +21,7 @@ ResultStorage = storage_module.ResultStorage
 @pytest.fixture
 def orchestrator():
     """Create orchestrator instance."""
-    return ScenarioOrchestrator(
-        scenario_dir="astraguard/hil/scenarios/sample_scenarios"
-    )
+    return ScenarioOrchestrator()
 
 
 @pytest.fixture
@@ -283,7 +281,8 @@ class TestCampaignResults:
 class TestResultStorageClass:
     """Test result storage functionality."""
 
-    def test_save_scenario_result(self, results_storage):
+    @pytest.mark.asyncio
+    async def test_save_scenario_result(self, results_storage):
         """Test saving individual scenario result."""
         result = {
             "success": True,
@@ -291,7 +290,7 @@ class TestResultStorageClass:
             "simulated_time_s": 100,
         }
 
-        path = results_storage.save_scenario_result("test_scenario", result)
+        path = await results_storage.save_scenario_result("test_scenario", result)
         assert Path(path).exists()
         assert "test_scenario" in path
 
@@ -300,18 +299,19 @@ class TestResultStorageClass:
         assert saved_data["success"] is True
         assert "timestamp" in saved_data
 
-    def test_get_scenario_results(self, results_storage):
+    @pytest.mark.asyncio
+    async def test_get_scenario_results(self, results_storage):
         """Test retrieving scenario results."""
         import time
         
         result1 = {"success": True, "execution_time_s": 5.0}
         result2 = {"success": False, "error": "test error"}
 
-        results_storage.save_scenario_result("test_scenario", result1)
+        await results_storage.save_scenario_result("test_scenario", result1)
         time.sleep(1.1)  # Ensure different timestamp
-        results_storage.save_scenario_result("test_scenario", result2)
+        await results_storage.save_scenario_result("test_scenario", result2)
 
-        results = results_storage.get_scenario_results("test_scenario", limit=10)
+        results = await results_storage.get_scenario_results("test_scenario", limit=10)
         assert len(results) >= 1
         assert all("scenario_name" in r for r in results)
 
