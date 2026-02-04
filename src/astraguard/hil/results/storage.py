@@ -1,22 +1,27 @@
 """Test result persistence and retrieval."""
 
 import json
+import logging
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 from datetime import datetime
+from typing import List, Dict, Any, Optional, cast
+
+
+logger: logging.Logger = logging.getLogger(__name__)
 
 
 class ResultStorage:
     """Manages persistent storage and retrieval of test results."""
 
-    def __init__(self, results_dir: str = "astraguard/hil/results"):
+    def __init__(self, results_dir: str = "astraguard/hil/results") -> None:
         """
         Initialize result storage.
 
         Args:
             results_dir: Directory for result files
         """
-        self.results_dir = Path(results_dir)
+        self.results_dir: Path = Path(results_dir)
         self.results_dir.mkdir(parents=True, exist_ok=True)
 
     async def save_scenario_result(
@@ -32,20 +37,33 @@ class ResultStorage:
         Returns:
             Path to saved result file
         """
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"{scenario_name}_{timestamp}.json"
-        filepath = self.results_dir / filename
+        if not scenario_name or not isinstance(scenario_name, str):
+            raise ValueError(f"Invalid scenario_name: {scenario_name}")
+        
+        if not isinstance(result, dict):
+            raise ValueError(f"Result must be a dictionary, got {type(result)}")
+
+        timestamp: str = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename: str = f"{scenario_name}_{timestamp}.json"
+        filepath: Path = self.results_dir / filename
 
         # Ensure result has metadata
-        result_with_metadata = {
+        result_with_metadata: Dict[str, Any] = {
             "scenario_name": scenario_name,
             "timestamp": datetime.now().isoformat(),
             **result,
         }
 
-        # Use asyncio.to_thread for I/O operations
-        await asyncio.to_thread(filepath.write_text, json.dumps(result_with_metadata, indent=2, default=str))
-        return str(filepath)
+        try:
+            filepath.write_text(json.dumps(result_with_metadata, indent=2, default=str))
+            logger.info(f"Saved scenario result: {filepath}")
+            return str(filepath)
+        except (OSError, IOError, PermissionError) as e:
+            logger.error(f"Failed to write result file {filepath}: {e}")
+            raise
+        except (TypeError, ValueError) as e:
+            logger.error(f"Failed to serialize result data for {scenario_name}: {e}")
+            raise
 
     async def get_scenario_results(
         self, scenario_name: str, limit: int = 10
@@ -60,16 +78,28 @@ class ResultStorage:
         Returns:
             List of result dicts (newest first)
         """
-        results = []
-        pattern = f"{scenario_name}_*.json"
-        result_files = sorted(self.results_dir.glob(pattern), reverse=True)[:limit]
+        if not scenario_name or not isinstance(scenario_name, str):
+            logger.warning(f"Invalid scenario_name: {scenario_name}")
+            return []
+        
+        if limit <= 0:
+            logger.warning(f"Invalid limit: {limit}")
+            return []
+
+        results: List[Dict[str, Any]] = []
+        pattern: str = f"{scenario_name}_*.json"
+        result_files: List[Path] = sorted(self.results_dir.glob(pattern), reverse=True)[:limit]
 
         for result_file in result_files:
             try:
-                result_data = await asyncio.to_thread(json.loads, result_file.read_text())
+                result_data = cast(Dict[str, Any], json.loads(result_file.read_text()))
                 results.append(result_data)
+            except (OSError, IOError, PermissionError) as e:
+                logger.warning(f"Failed to read result file {result_file.name}: {e}")
+            except (json.JSONDecodeError, UnicodeDecodeError) as e:
+                logger.warning(f"Corrupted result file {result_file.name}: {e}")
             except Exception as e:
-                print(f"[WARN] Failed to load result {result_file.name}: {e}")
+                logger.error(f"Unexpected error loading result {result_file.name}: {e}")
 
         return results
 
@@ -83,17 +113,25 @@ class ResultStorage:
         Returns:
             List of campaign summary dicts (newest first)
         """
-        campaigns = []
-        campaign_files = sorted(
+        if limit <= 0:
+            logger.warning(f"Invalid limit: {limit}")
+            return []
+
+        campaigns: List[Dict[str, Any]] = []
+        campaign_files: List[Path] = sorted(
             self.results_dir.glob("campaign_*.json"), reverse=True
         )[:limit]
 
         for campaign_file in campaign_files:
             try:
-                campaign_data = json.loads(campaign_file.read_text())
+                campaign_data = cast(Dict[str, Any], json.loads(campaign_file.read_text()))
                 campaigns.append(campaign_data)
+            except (OSError, IOError, PermissionError) as e:
+                logger.warning(f"Failed to read campaign file {campaign_file.name}: {e}")
+            except (json.JSONDecodeError, UnicodeDecodeError) as e:
+                logger.warning(f"Corrupted campaign file {campaign_file.name}: {e}")
             except Exception as e:
-                print(f"[WARN] Failed to load campaign {campaign_file.name}: {e}")
+                logger.error(f"Unexpected error loading campaign {campaign_file.name}: {e}")
 
         return campaigns
 
@@ -107,14 +145,24 @@ class ResultStorage:
         Returns:
             Campaign summary dict or None if not found
         """
-        campaign_file = self.results_dir / f"campaign_{campaign_id}.json"
+        if not campaign_id or not isinstance(campaign_id, str):
+            logger.warning(f"Invalid campaign_id: {campaign_id}")
+            return None
+
+        campaign_file: Path = self.results_dir / f"campaign_{campaign_id}.json"
         if not campaign_file.exists():
             return None
 
         try:
-            return json.loads(campaign_file.read_text())
+            return cast(Dict[str, Any], json.loads(campaign_file.read_text()))
+        except (OSError, IOError, PermissionError) as e:
+            logger.error(f"Failed to read campaign {campaign_id}: {e}")
+            return None
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            logger.error(f"Corrupted campaign file {campaign_id}: {e}")
+            return None
         except Exception as e:
-            print(f"[ERROR] Failed to load campaign {campaign_id}: {e}")
+            logger.error(f"Unexpected error loading campaign {campaign_id}: {e}")
             return None
 
     def get_result_statistics(self) -> Dict[str, Any]:
@@ -124,7 +172,7 @@ class ResultStorage:
         Returns:
             Dict with statistics
         """
-        campaigns = self.get_recent_campaigns(limit=999)
+        campaigns: List[Dict[str, Any]] = self.get_recent_campaigns(limit=999)
         if not campaigns:
             return {
                 "total_campaigns": 0,
@@ -132,10 +180,10 @@ class ResultStorage:
                 "avg_pass_rate": 0.0,
             }
 
-        total_campaigns = len(campaigns)
-        total_scenarios = sum(c.get("total_scenarios", 0) for c in campaigns)
-        total_passed = sum(c.get("passed", 0) for c in campaigns)
-        avg_pass_rate = total_passed / total_scenarios if total_scenarios > 0 else 0.0
+        total_campaigns: int = len(campaigns)
+        total_scenarios: int = sum(c.get("total_scenarios", 0) for c in campaigns)
+        total_passed: int = sum(c.get("passed", 0) for c in campaigns)
+        avg_pass_rate: float = total_passed / total_scenarios if total_scenarios > 0 else 0.0
 
         return {
             "total_campaigns": total_campaigns,
@@ -154,14 +202,24 @@ class ResultStorage:
         Returns:
             Number of files deleted
         """
+        if older_than_days <= 0:
+            logger.warning(f"Invalid age threshold: {older_than_days}")
+            return 0
+
         from time import time
 
-        cutoff_time = time() - (older_than_days * 86400)
-        deleted_count = 0
+        cutoff_time: float = time() - (older_than_days * 86400)
+        deleted_count: int = 0
 
         for result_file in self.results_dir.glob("*.json"):
-            if result_file.stat().st_mtime < cutoff_time:
-                result_file.unlink()
-                deleted_count += 1
+            try:
+                if result_file.stat().st_mtime < cutoff_time:
+                    result_file.unlink()
+                    deleted_count += 1
+            except (OSError, IOError, PermissionError) as e:
+                logger.warning(f"Failed to delete file {result_file.name}: {e}")
+            except Exception as e:
+                logger.error(f"Unexpected error deleting file {result_file.name}: {e}")
 
+        logger.info(f"Cleanup completed: deleted {deleted_count} files older than {older_than_days} days")
         return deleted_count

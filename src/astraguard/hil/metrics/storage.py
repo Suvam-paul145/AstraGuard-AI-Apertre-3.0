@@ -1,4 +1,9 @@
-"""Persistent metrics storage."""
+"""Persistent metrics storage for AstraGuard HIL (Hardware-in-the-Loop) system.
+
+This module provides functionality to store, retrieve, and compare latency metrics
+collected during HIL testing runs. It handles both aggregated statistics and raw
+measurement data, enabling performance analysis and regression detection.
+"""
 
 import json
 import asyncio
@@ -11,15 +16,24 @@ from astraguard.hil.metrics.latency import LatencyCollector
 
 
 class MetricsStorage:
-    """Manages persistent storage of latency metrics."""
+    """Manages persistent storage of latency metrics for HIL testing runs.
+
+    This class provides methods to save latency measurements to disk, load previously
+    saved metrics, compare performance between different runs, and retrieve recent
+    test runs.
+
+    Attributes:
+        run_id (str): Unique identifier for the current testing run.
+        metrics_dir (Path): Directory path where metrics for this run are stored.
+    """
 
     def __init__(self, run_id: str, results_dir: str = "astraguard/hil/results"):
         """
         Initialize metrics storage.
 
         Args:
-            run_id: Unique identifier for this run
-            results_dir: Base directory for results
+            run_id (str): Unique identifier for this run.
+            results_dir (str, optional): Base directory for results. Defaults to "astraguard/hil/results".
         """
         try:
             self.run_id = run_id
@@ -34,13 +48,14 @@ class MetricsStorage:
 
     async def save_latency_stats(self, collector: LatencyCollector) -> Dict[str, str]:
         """
-        Save aggregated and raw latency metrics asynchronously.
+        Save aggregated and raw latency metrics to disk.
 
         Args:
-            collector: LatencyCollector with measurements
+            collector (LatencyCollector): LatencyCollector instance containing measurements to save.
 
         Returns:
-            Dict with paths to saved files
+            Dict[str, str]: Dictionary with paths to saved files, containing 'summary' and 'raw' keys
+                pointing to the JSON summary and CSV raw data files respectively.
         """
         try:
             stats = collector.get_stats()
@@ -76,7 +91,8 @@ class MetricsStorage:
         Load metrics from this run asynchronously.
 
         Returns:
-            Parsed metrics dictionary or None if not found
+            Dict[str, Any] or None: Parsed metrics dictionary containing run statistics,
+                or None if the metrics file is not found or cannot be loaded.
         """
         summary_path = self.metrics_dir / "latency_summary.json"
         if not await asyncio.to_thread(summary_path.exists):
@@ -100,10 +116,11 @@ class MetricsStorage:
         Compare metrics between two runs.
 
         Args:
-            other_run_id: Other run ID to compare against
+            other_run_id (str): Other run ID to compare against.
 
         Returns:
-            Comparison results
+            Dict[str, Any]: Comparison results containing metrics differences between the two runs.
+                Includes error information if metrics cannot be loaded.
         """
         other_storage = MetricsStorage(other_run_id)
         other_metrics = other_storage.get_run_metrics()
@@ -151,11 +168,11 @@ class MetricsStorage:
         Get recent metric runs asynchronously.
 
         Args:
-            results_dir: Base results directory
-            limit: Maximum number of runs to return
+            results_dir (str, optional): Base results directory. Defaults to "astraguard/hil/results".
+            limit (int, optional): Maximum number of runs to return. Defaults to 10.
 
         Returns:
-            List of recent run IDs
+            list: List of recent run IDs, sorted by most recent first.
         """
         try:
             results_path = Path(results_dir)
