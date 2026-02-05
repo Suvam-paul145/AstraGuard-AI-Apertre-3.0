@@ -1,6 +1,6 @@
-"""
-AstraGuard Structured Logging Module
-JSON-based structured logging for enterprise observability (Azure Monitor compatible)
+"""AstraGuard Structured Logging Module.
+
+JSON-based structured logging for enterprise observability (Azure Monitor compatible).
 """
 
 import logging
@@ -33,16 +33,19 @@ def setup_json_logging(
     service_name: str = "astra-guard",
     environment: str = None
 ):
-    if environment is None:
-        environment = _cached_get_secret("environment", "development")
-    """
-    Setup JSON structured logging for production environments
-    Compatible with Azure Monitor, ELK Stack, Splunk, etc.
+    """Sets up JSON structured logging.
+
+    Configures structlog and the root logger for JSON output, making it compatible with
+    Azure Monitor, ELK Stack, Splunk, etc.  It also binds global context variables for
+    service name, environment, and application version.
 
     Args:
-        log_level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-        service_name: Name of the service
-        environment: Environment name (development, staging, production)
+        log_level: The logging level (e.g., "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL").
+        service_name: The name of the service.
+        environment: The environment name (e.g., "development", "staging", "production").
+
+    Returns:
+        None.
     """
     try:
         # Validate log_level
@@ -104,14 +107,13 @@ def setup_json_logging(
 
 
 def get_logger(name: str = __name__) -> structlog.BoundLogger:
-    """
-    Get a structured logger instance
-    
+    """Gets a structured logger instance.
+
     Args:
-        name: Logger name (typically __name__)
-        
+        name: Logger name (typically `__name__`).
+
     Returns:
-        Bound structlog logger instance
+        A bound structlog logger instance.
     """
     return structlog.get_logger(name)
 
@@ -121,17 +123,45 @@ def get_logger(name: str = __name__) -> structlog.BoundLogger:
 # ============================================================================
 
 class LogContext:
-    """Context manager for scoped logging context"""
+    """Context manager for scoped logging context.
+
+    Provides a context in which additional key-value pairs are added to each log message.
+    """
     
     def __init__(self, logger: structlog.BoundLogger, **context):
+        """Initializes the LogContext.
+
+        Args:
+            logger: The structlog logger instance.
+            **context: Additional key-value pairs to add to the logging context.
+        """
         self.logger = logger
         self.context = context
     
-    def __enter__(self):
+    def __enter__(self) -> structlog.BoundLogger:
+        """Enters the logging context.
+
+        Binds the logger with the specified context.
+
+        Returns:
+            The bound logger instance.
+        """
         self.logger = self.logger.bind(**self.context)
         return self.logger
     
     def __exit__(self, exc_type, exc_val, exc_tb):
+        """Exits the logging context.
+
+        Logs an error if an exception occurred within the context.
+
+        Args:
+            exc_type: The type of the exception, if any.
+            exc_val: The exception instance, if any.
+            exc_tb: The traceback, if any.
+
+        Returns:
+            None.
+        """
         if exc_type is not None:
             self.logger.error(
                 "context_error",
@@ -148,16 +178,18 @@ def log_request(
     duration_ms: float,
     **extra
 ):
-    """
-    Log HTTP request with structured data
-    
+    """Logs an HTTP request with structured data.
+
     Args:
-        logger: Structlog logger instance
-        method: HTTP method
-        endpoint: Request endpoint
-        status: HTTP status code
-        duration_ms: Request duration in milliseconds
-        **extra: Additional context fields
+        logger: The structlog logger instance.
+        method: The HTTP method (e.g., "GET", "POST").
+        endpoint: The request endpoint.
+        status: The HTTP status code.
+        duration_ms: The request duration in milliseconds.
+        **extra: Additional context fields to include in the log.
+
+    Returns:
+        None.
     """
     logger.info(
         "http_request",
@@ -175,14 +207,16 @@ def log_error(
     context: str,
     **extra
 ):
-    """
-    Log error with full context and stack trace
-    
+    """Logs an error with full context and stack trace.
+
     Args:
-        logger: Structlog logger instance
-        error: Exception instance
-        context: Context description
-        **extra: Additional context fields
+        logger: The structlog logger instance.
+        error: The exception instance.
+        context: A description of the context in which the error occurred.
+        **extra: Additional context fields to include in the log.
+
+    Returns:
+        None.
     """
     logger.error(
         context,
@@ -200,15 +234,17 @@ def log_detection(
     confidence: float,
     **extra
 ):
-    """
-    Log anomaly/detection event
-    
+    """Logs an anomaly/detection event.
+
     Args:
-        logger: Structlog logger instance
-        severity: Severity level (critical, warning, info)
-        detected_type: Type of anomaly detected
-        confidence: Confidence score (0.0-1.0)
-        **extra: Additional context fields
+        logger: The structlog logger instance.
+        severity: The severity level ("critical", "warning", "info").
+        detected_type: The type of anomaly detected.
+        confidence: The confidence score (0.0-1.0).
+        **extra: Additional context fields to include in the log.
+
+    Returns:
+        None.
     """
     logger.info(
         "anomaly_detected",
@@ -227,16 +263,18 @@ def log_circuit_breaker_event(
     reason: Optional[str] = None,
     **extra
 ):
-    """
-    Log circuit breaker state changes
-    
+    """Logs a circuit breaker state change event.
+
     Args:
-        logger: Structlog logger instance
-        event: Event type (opened, closed, reset, half_open)
-        breaker_name: Name of circuit breaker
-        state: Current state
-        reason: Reason for state change
-        **extra: Additional context fields
+        logger: The structlog logger instance.
+        event: The event type ("opened", "closed", "reset", "half_open").
+        breaker_name: The name of the circuit breaker.
+        state: The current state of the circuit breaker.
+        reason: The reason for the state change (optional).
+        **extra: Additional context fields to include in the log.
+
+    Returns:
+        None.
     """
     logger.warning(
         "circuit_breaker_event",
@@ -256,16 +294,18 @@ def log_retry_event(
     delay_ms: Optional[float] = None,
     **extra
 ):
-    """
-    Log retry attempt
-    
+    """Logs a retry attempt.
+
     Args:
-        logger: Structlog logger instance
-        endpoint: Endpoint being retried
-        attempt: Attempt number
-        status: Status (retrying, success, exhausted)
-        delay_ms: Delay before next retry in milliseconds
-        **extra: Additional context fields
+        logger: The structlog logger instance.
+        endpoint: The endpoint being retried.
+        attempt: The attempt number.
+        status: The status of the retry ("retrying", "success", "exhausted").
+        delay_ms: The delay before the next retry in milliseconds (optional).
+        **extra: Additional context fields to include in the log.
+
+    Returns:
+        None.
     """
     level = "info" if status == "retrying" else "warning"
     getattr(logger, level)(
@@ -286,16 +326,18 @@ def log_recovery_action(
     duration_ms: Optional[float] = None,
     **extra
 ):
-    """
-    Log recovery/remediation action
-    
+    """Logs a recovery/remediation action.
+
     Args:
-        logger: Structlog logger instance
-        action_type: Type of recovery action
-        status: Status (started, completed, failed)
-        component: Component being recovered
-        duration_ms: Duration of recovery in milliseconds
-        **extra: Additional context fields
+        logger: The structlog logger instance.
+        action_type: The type of recovery action.
+        status: The status of the recovery action ("started", "completed", "failed").
+        component: The component being recovered.
+        duration_ms: The duration of the recovery action in milliseconds (optional).
+        **extra: Additional context fields to include in the log.
+
+    Returns:
+        None.
     """
     logger.info(
         "recovery_action",
@@ -315,22 +357,24 @@ def log_performance_metric(
     threshold: Optional[float] = None,
     **extra
 ):
-    """
-    Log performance metric
+    """Logs a performance metric.
 
     Args:
-        logger: Structlog logger instance
-        metric_name: Name of metric
-        value: Metric value
-        unit: Unit of measurement
-        threshold: SLO threshold for comparison
-        **extra: Additional context fields
+        logger: The structlog logger instance.
+        metric_name: The name of the metric.
+        value: The metric value.
+        unit: The unit of measurement (default: "ms").
+        threshold: An SLO threshold for comparison (optional).
+        **extra: Additional context fields to include in the log.
+
+    Returns:
+        None.
     """
     alert = False
     if threshold is not None and value > threshold:
         alert = True
         log_level = "warning"
-    else:
+    else: 
         log_level = "info"
 
     getattr(logger, log_level)(
@@ -415,27 +459,47 @@ async def async_log_detection(
 # ============================================================================
 
 def set_log_level(level: str):
-    """Change logging level at runtime"""
-    try:
-        if not hasattr(logging, level.upper()):
-            raise ValueError(f"Invalid log level: {level}")
-        logging.getLogger().setLevel(getattr(logging, level))
-    except (AttributeError, ValueError) as e:
-        print(f"Warning: Failed to set log level to '{level}': {e}. Log level unchanged.", file=sys.stderr)
+    """Changes the logging level at runtime.
+
+    Args:
+        level: The new logging level (e.g., "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL").
+
+    Returns:
+        None.
+    """
+    logging.getLogger().setLevel(getattr(logging, level))
 
 
 def clear_context():
-    """Clear all context variables"""
+    """Clears all context variables.
+
+    Returns:
+        None.
+    """
     structlog.contextvars.clear_contextvars()
 
 
 def bind_context(**context):
-    """Add context to all future log entries"""
+    """Adds context variables to all future log entries.
+
+    Args:
+        **context: Key-value pairs to add to the logging context.
+
+    Returns:
+        None.
+    """
     structlog.contextvars.bind_contextvars(**context)
 
 
 def unbind_context(*keys):
-    """Remove context variables"""
+    """Removes context variables.
+
+    Args:
+        *keys: Variable number of keys to remove from the context.
+
+    Returns:
+        None.
+    """
     structlog.contextvars.unbind_contextvars(*keys)
 
 

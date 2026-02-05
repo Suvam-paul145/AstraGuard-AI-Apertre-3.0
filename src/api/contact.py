@@ -31,11 +31,14 @@ except ImportError:
     AUTH_AVAILABLE = False
 
 
-async def get_admin_user(request: Request):
-    """Dynamic admin dependency that checks AUTH_AVAILABLE at request time"""
-    if AUTH_AVAILABLE:
-        return await require_admin(request)
-    return None
+if AUTH_AVAILABLE:
+    async def get_admin_user(user = Depends(require_admin)):
+        """Dynamic admin dependency when auth is available"""
+        return user
+else:
+    async def get_admin_user():
+        """No-op admin dependency when auth is unavailable"""
+        return None
 
 
 # Create router
