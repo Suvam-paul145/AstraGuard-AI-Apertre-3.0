@@ -1,6 +1,9 @@
 """
-AstraGuard AI - FastAPI Application Entry Point
-For Vercel & production deployments
+AstraGuard AI - FastAPI Application Entry Point.
+
+This module serves as the primary entry point for Vercel and production deployments.
+It securely imports the main `app` instance from `api.service`, handling potential
+import errors gracefully with detailed logging for debugging deployment issues.
 """
 import logging
 logger=logging.getLogger(__name__)

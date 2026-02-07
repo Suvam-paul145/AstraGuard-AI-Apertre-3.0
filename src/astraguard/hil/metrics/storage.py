@@ -112,14 +112,19 @@ class MetricsStorage:
 
     def compare_runs(self, other_run_id: str) -> Dict[str, Any]:
         """
-        Compare metrics between two runs.
+        Compare latency performance between this run and a historical run.
+
+        Calculates the delta (difference) in Mean and P95 latency for all
+        common metrics available in both runs. Useful for regression testing.
 
         Args:
-            other_run_id (str): Other run ID to compare against.
+            other_run_id (str): ID of the historical run to compare against.
 
         Returns:
-            Dict[str, Any]: Comparison results containing metrics differences between the two runs.
-                Includes error information if metrics cannot be loaded.
+            Dict[str, Any]: A comparison report containing:
+                - run1, run2 (str): IDs of compared runs.
+                - metrics (Dict): Per-metric differences (diff_ms).
+                - error (str, optional): Error message if loading fails.
         """
         other_storage = MetricsStorage(other_run_id)
         other_metrics = other_storage.get_run_metrics()

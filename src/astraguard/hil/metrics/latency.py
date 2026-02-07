@@ -36,19 +36,26 @@ class LatencyCollector:
         self, sat_id: str, scenario_time_s: float, detection_delay_ms: float
     ) -> None:
         """
-        Record fault detection latency.
+        Record the latency of a fault detection event.
+
+        Captures the precise time elapsed between the injection of a fault and
+        its initial detection by the anomaly system.
 
         Args:
-            sat_id: Satellite identifier (e.g., "SAT1")
-            scenario_time_s: Simulation time when detected
-            detection_delay_ms: Time from fault injection to detection
+            sat_id (str): Satellite identifier (e.g., "SAT1").
+            scenario_time_s (float): Simulation time (seconds) when detection occurred.
+            detection_delay_ms (float): Time elapsed (milliseconds) from fault injection
+                                        to detection. Must be non-negative.
+
+        Raises:
+            ValueError: If inputs are invalid (empty ID, negative metrics).
         """
         if not isinstance(sat_id, str) or not sat_id.strip():
             raise ValueError(f"Invalid sat_id: must be non-empty string, got {sat_id}")
-        
+
         if not isinstance(scenario_time_s, (int, float)) or scenario_time_s < 0:
             raise ValueError(f"Invalid scenario_time_s: must be non-negative number, got {scenario_time_s}")
-        
+
         if not isinstance(detection_delay_ms, (int, float)) or detection_delay_ms < 0:
             raise ValueError(f"Invalid detection_delay_ms: must be non-negative number, got {detection_delay_ms}")
 

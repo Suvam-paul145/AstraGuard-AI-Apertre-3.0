@@ -278,7 +278,24 @@ except ValueError:
 
 @contextmanager
 def track_request(endpoint: str, method: str = "POST"):
-    """Track HTTP request metrics"""
+    """
+    Context manager to track HTTP request metrics (RED method).
+
+    Automatically monitors:
+    - Rate: Increments request counts (success/failure).
+    - Errors: Tracks exceptions and 500 statuses.
+    - Duration: Measures latency via Histogram.
+
+    Also manages concurrent connection counts (`ACTIVE_CONNECTIONS`).
+
+    Args:
+        endpoint (str): API path or route name (e.g., "/api/v1/telemetry").
+        method (str): HTTP method (GET, POST, etc.).
+
+    Raises:
+        Exception: Re-raises any exception that occurs within the block,
+                   ensuring it propagates after metrics are recorded.
+    """
     start = time.time()
     try:
         if ACTIVE_CONNECTIONS:

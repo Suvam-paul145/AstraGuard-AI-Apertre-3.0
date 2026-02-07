@@ -33,17 +33,21 @@ api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 async def get_api_key(request: Request, api_key: str = Depends(api_key_header)) -> APIKey:
     """
-    FastAPI dependency for API key authentication.
+    FastAPI dependency for validating API keys.
+
+    Retrieves the 'X-API-Key' header, validates it against the active key store,
+    checks for expiration and rate limits, and returns the key object if valid.
 
     Args:
-        request: FastAPI request object
-        api_key: API key from header
+        request (Request): The incoming FastAPI request.
+        api_key (str): The raw API key string from the header.
 
     Returns:
-        APIKey object if valid
+        APIKey: The validated API key object containing metadata and permissions.
 
     Raises:
-        HTTPException: If authentication fails
+        HTTPException(401): If the key is missing from headers.
+        HTTPException(401): If the key is invalid, expired, or rate-limited.
     """
     if not api_key:
         raise HTTPException(
@@ -70,13 +74,16 @@ async def get_api_key(request: Request, api_key: str = Depends(api_key_header)) 
 
 def require_permission(permission: str):
     """
-    Create a dependency that requires a specific permission.
+    Create a dependency that requires a specific permission scope.
+
+    Used as a decorator or dependency in FastAPI routes to enforce granular
+    access control (RbAC) based on the permissions associated with the API key.
 
     Args:
-        permission: The permission required (read, write, admin)
+        permission (str): The permission identifier (e.g., 'read', 'write', 'admin').
 
     Returns:
-        FastAPI dependency function
+        Callable: A FastAPI dependency function that validates the permission.
     """
     async def permission_checker(api_key: APIKey = Depends(get_api_key)) -> APIKey:
         if permission not in api_key.permissions:

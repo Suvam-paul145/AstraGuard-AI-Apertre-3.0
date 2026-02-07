@@ -44,18 +44,21 @@ class ResultStorage:
         self, scenario_name: str, result: Dict[str, Any]
     ) -> str:
         """
-        Save individual scenario result to file.
+        Persist result data for a single HIL scenario execution.
+
+        Saves the result dictionary as a JSON file, automatically appending
+        timestamp metadata (`scenario_name_{timestamp}.json`).
 
         Args:
-            scenario_name (str): Name of scenario (without .yaml).
-            result (Dict[str, Any]): Execution result dict.
+            scenario_name (str): Name of the test scenario (e.g., "power_loss_geo").
+            result (Dict[str, Any]): The execution result object to save.
 
         Returns:
-            str: Path to saved result file.
+            str: The absolute path to the saved result file.
 
         Raises:
-            OSError: If there is an issue writing to the file.
-            ValueError: If the result dict contains non-serializable data.
+            OSError: If filesystem writes fail.
+            ValueError: If input data is invalid or non-serializable.
         """
         if not scenario_name or not isinstance(scenario_name, str):
             raise ValueError(f"Invalid scenario_name: {scenario_name}")
