@@ -693,6 +693,44 @@ class UserResponse(BaseModel):
     last_login: Optional[datetime]
     is_active: bool
 
+
+class APIKeyCreateRequest(BaseModel):
+    """Request to create a new API key."""
+    name: str = Field(..., min_length=1, max_length=100)
+    permissions: Set[str] = Field(default_factory=lambda: {"read", "write"})
+
+
+class APIKeyResponse(BaseModel):
+    """API key information response."""
+    id: str
+    name: str
+    permissions: Set[str]
+    created_at: datetime
+    expires_at: Optional[datetime]
+    last_used: Optional[datetime]
+
+
+class APIKeyCreateResponse(BaseModel):
+    """Response after creating an API key."""
+    id: str
+    name: str
+    key: str
+    permissions: Set[str]
+    created_at: datetime
+    expires_at: Optional[datetime]
+
+
+class LoginRequest(BaseModel):
+    """User login request."""
+    username: str = Field(..., min_length=1)
+    password: str = Field(..., min_length=1)
+
+
+class TokenResponse(BaseModel):
+    """JWT token response."""
+    access_token: str
+    token_type: str = "bearer"
+
     def check_rate_limit(self, api_key: str) -> None:
         """
         Check if the API key has exceeded its rate limit.

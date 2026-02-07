@@ -22,6 +22,7 @@ Attributes:
 
 import os
 import time
+import asyncio
 from datetime import datetime, timedelta
 from typing import List
 from collections import deque
@@ -119,6 +120,9 @@ latest_telemetry_data = None # Store latest telemetry for dashboard
 anomaly_history = deque(maxlen=MAX_ANOMALY_HISTORY_SIZE)  # Bounded deque prevents memory exhaustion
 active_faults = {} # Stores active chaos experiments: {fault_type: expiration_timestamp}
 start_time = time.time()
+
+# Thread-safety for global state updates
+global_state_lock = asyncio.Lock()
 
 # Rate limiting
 redis_client = None
@@ -876,14 +880,9 @@ async def submit_telemetry_batch(batch: TelemetryBatch, current_user: User = Dep
     Returns:
         BatchAnomalyResponse with aggregated results
     """
-    results = []
-    anomalies_detected = 0
-
-    for telemetry in batch.telemetry:
-        result = await submit_telemetry(telemetry)
-        results.append(result)
-        if result.is_anomaly:
-            anomalies_detected += 1
+    # Process telemetry concurrently for better performance
+    results = await asyncio.gather(*[submit_telemetry(telemetry) for telemetry in batch.telemetry])
+    anomalies_detected = sum(1 for result in results if result.is_anomaly)
 
     return BatchAnomalyResponse(
         total_processed=len(results),
