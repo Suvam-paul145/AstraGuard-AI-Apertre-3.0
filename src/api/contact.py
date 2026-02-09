@@ -11,7 +11,7 @@ import sqlite3
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Any, Union
 from fastapi import APIRouter, HTTPException, Request, Depends, Query
 from pydantic import BaseModel, EmailStr, Field, validator
 from fastapi.responses import JSONResponse
@@ -32,11 +32,11 @@ except ImportError:
 
 
 if AUTH_AVAILABLE:
-    async def get_admin_user(user = Depends(require_admin)):
+    async def get_admin_user(user: Any = Depends(require_admin)) -> Any:
         """Dynamic admin dependency when auth is available"""
         return user
 else:
-    async def get_admin_user():
+    async def get_admin_user(user: Any = None) -> Any:
         """No-op admin dependency when auth is unavailable"""
         return None
 
@@ -68,7 +68,7 @@ class ContactSubmission(BaseModel):
     website: Optional[str] = Field(None, description="Honeypot field")
     
     @validator('name', 'subject', 'message')
-    def sanitize_text(cls, v):
+    def sanitize_text(cls, v: str) -> str:
         """Remove dangerous characters to prevent XSS"""
         if v:
             # Remove HTML tags and dangerous characters
@@ -76,7 +76,7 @@ class ContactSubmission(BaseModel):
         return v
     
     @validator('email')
-    def normalize_email(cls, v):
+    def normalize_email(cls, v: str) -> str:
         """Normalize email to lowercase"""
         return v.lower() if v else v
 
@@ -111,7 +111,7 @@ class SubmissionsResponse(BaseModel):
 
 
 # Database initialization
-def init_database():
+def init_database() -> None:
     """Initialize SQLite database with contact_submissions table"""
     DATA_DIR.mkdir(exist_ok=True)
     
@@ -155,8 +155,8 @@ init_database()
 # Rate limiting helper
 class InMemoryRateLimiter:
     """Simple in-memory rate limiter when Redis is not available"""
-    def __init__(self):
-        self.requests = {}
+    def __init__(self) -> None:
+        self.requests: dict[str, List[datetime]] = {}
     
     def is_allowed(self, key: str, limit: int, window: int) -> bool:
         """Check if request is allowed under rate limit"""
@@ -214,7 +214,7 @@ def save_submission(
     submission: ContactSubmission,
     ip_address: str,
     user_agent: str
-) -> int:
+) -> Optional[int]:
     """Save submission to database and return submission ID"""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -240,7 +240,7 @@ def save_submission(
     return submission_id
 
 
-def log_notification(submission: ContactSubmission, submission_id: int):
+def log_notification(submission: ContactSubmission, submission_id: Optional[int]) -> None:
     """Log notification to file (fallback when email is not configured)"""
     DATA_DIR.mkdir(exist_ok=True)
     
@@ -257,7 +257,7 @@ def log_notification(submission: ContactSubmission, submission_id: int):
         f.write(json.dumps(log_entry) + "\n")
 
 
-def send_email_notification(submission: ContactSubmission, submission_id: int):
+def send_email_notification(submission: ContactSubmission, submission_id: Optional[int]) -> None:
     """Send email notification (placeholder for SendGrid integration)"""
     # TODO: Implement SendGrid integration when SENDGRID_API_KEY is set
     if SENDGRID_API_KEY:
@@ -296,7 +296,7 @@ def send_email_notification(submission: ContactSubmission, submission_id: int):
 async def submit_contact_form(
     submission: ContactSubmission,
     request: Request
-):
+) -> Union[JSONResponse, ContactResponse]:
     """
     Submit a contact form
     
@@ -359,8 +359,8 @@ async def get_submissions(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     status_filter: Optional[str] = Query(None, regex="^(pending|resolved|spam)$"),
-    current_user = Depends(get_admin_user)
-):
+    current_user: Any = Depends(get_admin_user)
+) -> SubmissionsResponse:
     """
     Get contact form submissions (Admin only)
     
@@ -395,7 +395,7 @@ async def get_submissions(
         ORDER BY submitted_at DESC
         LIMIT ? OFFSET ?
     """
-    params.extend([limit, offset])
+    params.extend([str(limit), str(offset)])
     
     rows = cursor.execute(query, params).fetchall()
     conn.close()
@@ -428,8 +428,8 @@ async def get_submissions(
 async def update_submission_status(
     submission_id: int,
     status: str = Query(..., regex="^(pending|resolved|spam)$"),
-    current_user = Depends(get_admin_user)
-):
+    current_user: Any = Depends(get_admin_user)
+) -> dict[str, Any]:
     """
     Update submission status (Admin only)
     
@@ -458,7 +458,7 @@ async def update_submission_status(
 
 # Health check endpoint
 @router.get("/health")
-async def contact_health():
+async def contact_health() -> dict[str, Any]:
     """Check contact form service health"""
     try:
         # Check database
