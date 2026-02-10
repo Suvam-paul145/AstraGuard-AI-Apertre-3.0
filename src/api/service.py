@@ -8,12 +8,13 @@ import os
 import time
 import asyncio
 from datetime import datetime, timedelta
-from typing import List
+from typing import List, Dict, Any, Optional, Tuple, Deque
 from collections import deque
 from fastapi import FastAPI, HTTPException, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from contextlib import asynccontextmanager
+from typing import AsyncGenerator
 import secrets
 from core.secrets import get_secret, mask_secret
 from pydantic import BaseModel
@@ -69,6 +70,7 @@ from core.metrics import get_metrics_text, get_metrics_content_type
 from core.rate_limiter import RateLimiter, RateLimitMiddleware, get_rate_limit_config
 from backend.redis_client import RedisClient
 import numpy as np
+from numpy.typing import NDArray
 from astraguard.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -85,33 +87,33 @@ try:
     )
     from astraguard.tracing import initialize_tracing, setup_auto_instrumentation, instrument_fastapi, span_anomaly_detection
     from astraguard.logging_config import setup_json_logging, get_logger, log_request, log_detection, log_error
-    OBSERVABILITY_ENABLED = True
+    OBSERVABILITY_ENABLED: bool = True
 except ImportError:
     OBSERVABILITY_ENABLED = False
     print("Warning: Observability modules not available. Running without monitoring.")
 
 
 # Configuration
-MAX_ANOMALY_HISTORY_SIZE = 10000  # Maximum number of anomalies to keep in memory
+MAX_ANOMALY_HISTORY_SIZE: int = 10000  # Maximum number of anomalies to keep in memory
 
 # Global state
-state_machine = None
-policy_loader = None
-phase_aware_handler = None
-memory_store = None
-predictive_engine = None
-latest_telemetry_data = None # Store latest telemetry for dashboard
-anomaly_history = deque(maxlen=MAX_ANOMALY_HISTORY_SIZE)  # Bounded deque prevents memory exhaustion
-active_faults = {} # Stores active chaos experiments: {fault_type: expiration_timestamp}
-start_time = time.time()
+state_machine: Optional[StateMachine] = None
+policy_loader: Optional[MissionPhasePolicyLoader] = None
+phase_aware_handler: Optional[PhaseAwareAnomalyHandler] = None
+memory_store: Optional[AdaptiveMemoryStore] = None
+predictive_engine: Optional[Any] = None
+latest_telemetry_data: Optional[Dict[str, Any]] = None  # Store latest telemetry for dashboard
+anomaly_history: Deque[AnomalyResponse] = deque(maxlen=MAX_ANOMALY_HISTORY_SIZE)  # Bounded deque prevents memory exhaustion
+active_faults: Dict[str, float] = {}  # Stores active chaos experiments: {fault_type: expiration_timestamp}
+start_time: float = time.time()
 
 # Rate limiting
-redis_client = None
-telemetry_limiter = None
-api_limiter = None
+redis_client: Optional[RedisClient] = None
+telemetry_limiter: Optional[RateLimiter] = None
+api_limiter: Optional[RateLimiter] = None
 
 
-async def initialize_components():
+async def initialize_components() -> None:
     """Initialize application components (called on startup or in tests)."""
     global state_machine, policy_loader, phase_aware_handler, memory_store, predictive_engine
 
@@ -127,7 +129,7 @@ async def initialize_components():
         predictive_engine = await get_predictive_maintenance_engine(memory_store)
 
 
-def _check_credential_security():
+def _check_credential_security() -> None:
     """
     Check and warn about insecure credential configurations at startup.
 
@@ -138,8 +140,8 @@ def _check_credential_security():
     """
     global _USING_DEFAULT_CREDENTIALS
 
-    metrics_user = get_secret("METRICS_USER")
-    metrics_password = get_secret("METRICS_PASSWORD")
+    metrics_user: Optional[str] = get_secret("METRICS_USER")
+    metrics_password: Optional[str] = get_secret("METRICS_PASSWORD")
     metrics_user = get_secret("metrics_user")
     metrics_password = get_secret("metrics_password")
 
@@ -162,7 +164,7 @@ def _check_credential_security():
         return
 
     # List of weak/common credentials to warn about
-    weak_credentials = [
+    weak_credentials: List[Tuple[str, str]] = [
         ("admin", "admin"),
         ("admin", "password"),
         ("root", "root"),
@@ -179,7 +181,7 @@ def _check_credential_security():
             print("\n" + "=" * 70)
             print("[CRITICAL] SECURITY WARNING: Using default/weak credentials!")
             print("=" * 70)
-            print(f"Detected credentials: {get_secret_masked('metrics_user')}/{get_secret_masked('metrics_password')}")
+            print(f"Detected credentials: {mask_secret(metrics_user)}/{mask_secret(metrics_password)}")
             print()
             print("[WARNING] THESE CREDENTIALS ARE PUBLICLY KNOWN AND INSECURE!")
             print()
@@ -207,7 +209,7 @@ def _check_credential_security():
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan manager."""
     global redis_client, telemetry_limiter, api_limiter
 
@@ -222,12 +224,12 @@ async def lifespan(app: FastAPI):
 
     # Initialize rate limiting
     try:
-        redis_url = get_secret("redis_url")
+        redis_url: Optional[str] = get_secret("redis_url")
         redis_client = RedisClient(redis_url=redis_url)
         await redis_client.connect()
 
         # Get rate limit configurations
-        rate_configs = get_rate_limit_config()
+        rate_configs: Dict[str, Tuple[int, int]] = get_rate_limit_config()
 
         # Create rate limiters
         telemetry_limiter = RateLimiter(
@@ -306,7 +308,7 @@ security = HTTPBasic()
 # Credential validation flag (set during startup)
 _USING_DEFAULT_CREDENTIALS = False
 
-def get_current_username(credentials: HTTPBasicCredentials = Depends(security)):
+def get_current_username(credentials: HTTPBasicCredentials = Depends(security)) -> str:
     """
     Validate HTTP Basic Auth credentials for metrics endpoint.
 
@@ -374,7 +376,7 @@ def check_chaos_injection(fault_type: str) -> bool:
     return False
 
 
-def cleanup_expired_faults():
+def cleanup_expired_faults() -> None:
     """Clean up expired chaos faults."""
     current_time = time.time()
     expired = [k for k, v in active_faults.items() if current_time > v]
@@ -382,7 +384,7 @@ def cleanup_expired_faults():
         del active_faults[k]
 
 
-def inject_chaos_fault(fault_type: str, duration_seconds: int) -> dict:
+def inject_chaos_fault(fault_type: str, duration_seconds: int) -> Dict[str, Any]:
     """Inject a chaos fault for the specified duration."""
     expiration = time.time() + duration_seconds
     active_faults[fault_type] = expiration
@@ -393,7 +395,7 @@ def inject_chaos_fault(fault_type: str, duration_seconds: int) -> dict:
     }
 
 
-def create_response(status: str, data: dict = None, **kwargs) -> dict:
+def create_response(status: str, data: Optional[Dict[str, Any]] = None, **kwargs: Any) -> Dict[str, Any]:
     """Create a standardized API response with timestamp."""
     response = {
         "status": status,
@@ -405,43 +407,11 @@ def create_response(status: str, data: dict = None, **kwargs) -> dict:
     return response
 
 
-def process_telemetry_batch(telemetry_list: list) -> dict:
-    """Process a batch of telemetry data and return aggregated results."""
-    processed_count = 0
-    anomalies_detected = 0
-
-    for telemetry in telemetry_list:
-        try:
-            # Process individual telemetry (extracted from submit_telemetry logic)
-            processed_count += 1
-
-            # Check for anomalies
-            anomaly_score = anomaly_detector.detect_anomaly(telemetry)
-            if anomaly_score > 0.7:
-                anomalies_detected += 1
-
-                # Store anomaly
-                anomaly = AnomalyEvent(
-                    timestamp=datetime.now(),
-                    metric=telemetry.get('metric', 'unknown'),
-                    value=telemetry.get('value', 0.0),
-                    severity_score=anomaly_score,
-                    context=telemetry
-                )
-                anomaly_history.append(anomaly)
-
-        except Exception as e:
-            logger.error(f"Failed to process telemetry: {e}")
-            continue
-    return {
-        "processed": processed_count,
-        "anomalies_detected": anomalies_detected
-    }
 # ============================================================================
 # API Endpoints
 # ============================================================================
 @app.get("/", response_model=HealthCheckResponse)
-async def root():
+async def root() -> HealthCheckResponse:
     """Root endpoint - health check."""
     return HealthCheckResponse(
         status="healthy",
@@ -451,7 +421,7 @@ async def root():
 
 
 @app.get("/metrics", tags=["monitoring"])
-async def get_metrics():
+async def get_metrics() -> Response:
     """
     Prometheus metrics endpoint.
     
@@ -463,7 +433,7 @@ async def get_metrics():
     - Recovery actions
     """
     if not OBSERVABILITY_ENABLED:
-        return {"error": "Observability not enabled"}
+        return Response(content="Observability not enabled", media_type="text/plain", status_code=503)
     
     from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
     from starlette.responses import Response
@@ -472,7 +442,7 @@ async def get_metrics():
 
 
 @app.get("/health", response_model=HealthCheckResponse)
-async def health_check():
+async def health_check() -> HealthCheckResponse:
     """Health check endpoint."""
     try:
         # Get component health status
@@ -489,7 +459,10 @@ async def health_check():
 
         # Get current mission phase
         try:
-            mission_phase = state_machine.get_current_phase().value
+            if state_machine is not None:
+                mission_phase = state_machine.get_current_phase().value
+            else:
+                mission_phase = "UNKNOWN"
         except:
             mission_phase = "UNKNOWN"
 
@@ -520,7 +493,7 @@ async def health_check():
 
 
 @app.get("/metrics")
-async def metrics(username: str = Depends(get_current_username)):
+async def metrics(username: str = Depends(get_current_username)) -> Response:
     """Prometheus metrics endpoint."""
     return Response(
         content=get_metrics_text(), 
@@ -586,6 +559,11 @@ async def submit_telemetry(telemetry: TelemetryInput, current_user: User = Depen
 
 async def _process_telemetry(telemetry: TelemetryInput, request_start: float) -> AnomalyResponse:
     """Internal telemetry processing logic."""
+    # Type assertions for initialized globals
+    assert state_machine is not None
+    assert phase_aware_handler is not None
+    assert memory_store is not None
+    
     # Convert telemetry to dict
     data = {
         "voltage": telemetry.voltage,
@@ -724,7 +702,7 @@ async def _process_telemetry(telemetry: TelemetryInput, request_start: float) ->
 
 
 @app.get("/api/v1/telemetry/latest")
-async def get_latest_telemetry(api_key: APIKey = Depends(get_api_key)):
+async def get_latest_telemetry(api_key: APIKey = Depends(get_api_key)) -> Dict[str, Any]:
     """Get the most recent telemetry data point."""
     if latest_telemetry_data is None:
         return create_response("no_data", {"data": None, "message": "No telemetry received yet"})
@@ -790,6 +768,8 @@ async def get_status(api_key: APIKey = Depends(get_api_key)):
 
     Requires API key authentication with 'read' permission.
     """
+    assert state_machine is not None
+    
     health_monitor = get_health_monitor()
     components = health_monitor.get_all_health()
 
@@ -812,11 +792,14 @@ async def get_status(api_key: APIKey = Depends(get_api_key)):
 
 
 @app.get("/api/v1/phase", response_model=dict)
-async def get_phase(api_key: APIKey = Depends(get_api_key)):
+async def get_phase(api_key: APIKey = Depends(get_api_key)) -> Dict[str, Any]:
     """Get current mission phase.
 
     Requires API key authentication with 'read' permission.
     """
+    assert state_machine is not None
+    assert phase_aware_handler is not None
+    
     current_phase = state_machine.get_current_phase()
     constraints = phase_aware_handler.get_phase_constraints(current_phase)
 
@@ -832,6 +815,8 @@ async def get_phase(api_key: APIKey = Depends(get_api_key)):
 @app.post("/api/v1/phase", response_model=PhaseUpdateResponse)
 async def update_phase(request: PhaseUpdateRequest, current_user: User = Depends(require_phase_update)):
     """Update mission phase."""
+    assert state_machine is not None
+    
     try:
         target_phase = MissionPhase(request.phase.value)
 
@@ -866,6 +851,8 @@ async def get_memory_stats(api_key: APIKey = Depends(get_api_key)):
 
     Requires API key authentication with 'read' permission.
     """
+    assert memory_store is not None
+    
     stats = memory_store.get_stats()
 
     return MemoryStats(
@@ -880,11 +867,11 @@ async def get_memory_stats(api_key: APIKey = Depends(get_api_key)):
 @app.get("/api/v1/history/anomalies", response_model=AnomalyHistoryResponse)
 async def get_anomaly_history(
     api_key: str = Depends(get_api_key),
-    start_time: datetime = None,
-    end_time: datetime = None,
+    start_time: Optional[datetime] = None,
+    end_time: Optional[datetime] = None,
     limit: int = 100,
-    severity_min: float = None
-):
+    severity_min: Optional[float] = None
+) -> AnomalyHistoryResponse:
     """Retrieve anomaly history with optional filtering."""
     # Convert deque to list for filtering operations
     filtered = list(anomaly_history)
@@ -912,7 +899,7 @@ async def get_anomaly_history(
 
 # Authentication endpoints
 @app.post("/api/v1/auth/login", response_model=TokenResponse)
-async def login(request: LoginRequest):
+async def login(request: LoginRequest) -> TokenResponse:
     """Authenticate user and return JWT token."""
     auth_manager = get_auth_manager()
     token = auth_manager.authenticate_user(request.username, request.password)
@@ -920,7 +907,7 @@ async def login(request: LoginRequest):
 
 
 @app.post("/api/v1/auth/users", response_model=UserResponse)
-async def create_user(request: UserCreateRequest, current_user: User = Depends(require_admin)):
+async def create_user(request: UserCreateRequest, current_user: User = Depends(require_admin)) -> UserResponse:
     """Create a new user (admin only)."""
     auth_manager = get_auth_manager()
     user = await auth_manager.create_user(
@@ -940,7 +927,7 @@ async def create_user(request: UserCreateRequest, current_user: User = Depends(r
 
 
 @app.get("/api/v1/auth/users/me", response_model=UserResponse)
-async def get_current_user_info(current_user: User = Depends(get_current_user)):
+async def get_current_user_info(current_user: User = Depends(get_current_user)) -> UserResponse:
     """Get current user information."""
     return UserResponse(
         id=current_user.id,
@@ -953,7 +940,7 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
 
 
 @app.post("/api/v1/auth/apikeys", response_model=APIKeyCreateResponse)
-async def create_api_key(request: APIKeyCreateRequest, current_user: User = Depends(get_current_user)):
+async def create_api_key(request: APIKeyCreateRequest, current_user: User = Depends(get_current_user)) -> APIKeyCreateResponse:
     """Create a new API key for the current user."""
     auth_manager = get_auth_manager()
     api_key = await auth_manager.create_api_key(
@@ -972,7 +959,7 @@ async def create_api_key(request: APIKeyCreateRequest, current_user: User = Depe
 
 
 @app.get("/api/v1/auth/apikeys", response_model=List[APIKeyResponse])
-async def list_api_keys(current_user: User = Depends(get_current_user)):
+async def list_api_keys(current_user: User = Depends(get_current_user)) -> List[APIKeyResponse]:
     """List API keys for the current user."""
     auth_manager = get_auth_manager()
     api_keys = await auth_manager.get_user_api_keys(current_user.id)
@@ -990,7 +977,7 @@ async def list_api_keys(current_user: User = Depends(get_current_user)):
 
 
 @app.delete("/api/v1/auth/apikeys/{key_id}")
-async def revoke_api_key(key_id: str, current_user: User = Depends(get_current_user)):
+async def revoke_api_key(key_id: str, current_user: User = Depends(get_current_user)) -> Dict[str, str]:
     """Revoke an API key."""
     auth_manager = get_auth_manager()
     auth_manager.revoke_api_key(key_id, current_user.id)
