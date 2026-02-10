@@ -6,7 +6,7 @@ FastAPI-based REST API for telemetry ingestion and anomaly detection.
 
 import os
 import time
-from typing import List, Optional, Any, Union
+from typing import List
 from datetime import datetime, timedelta
 from collections import deque
 from asyncio import Lock
