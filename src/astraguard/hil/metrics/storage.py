@@ -98,7 +98,14 @@ class MetricsStorage:
 
         try:
             content = summary_path.read_text()
-            return cast(Optional[Dict[str, Any]], json.loads(content))
+            data = json.loads(content)
+            if not isinstance(data, dict):
+                logging.error(
+                    f"Metrics file {summary_path} does not contain a JSON object at the root; "
+                    f"got {type(data).__name__} instead."
+                )
+                return None
+            return cast(Dict[str, Any], data)
 
         except (OSError, PermissionError, IsADirectoryError) as e:
             logging.error(f"Failed to read metrics file {summary_path}: {e}")
