@@ -102,10 +102,21 @@ class AccuracyCollector:
 
     def get_accuracy_stats(self) -> Dict[str, Any]:
         """
-        Calculate accuracy statistics.
+        Calculate comprehensive classification accuracy statistics.
+
+        Computes:
+        - Overall Accuracy: (Correct / Total)
+        - Per-Fault Metrics: Precision, Recall, F1-Score for each fault type.
+        - Confidence Metrics: Mean and Standard Deviation of agent confidence.
 
         Returns:
-            Dict with overall accuracy, per-fault-type precision/recall, confidence
+            Dict[str, Any]: A dictionary containing:
+                - total_classifications (int)
+                - correct_classifications (int)
+                - overall_accuracy (float)
+                - by_fault_type (Dict): Nested stats per fault type
+                - confidence_mean (float)
+                - confidence_std (float)
         """
         if not self.agent_classifications:
             return {
@@ -310,10 +321,40 @@ class AccuracyCollector:
             "confusion_matrix": self.get_confusion_matrix(),
         }
 
+    def _find_ground_truth_fault(self, sat_id: str, timestamp_s: float) -> Optional[str]:
+        """
+        Find the ground truth fault type for a satellite at a given timestamp.
+
+        Uses binary search on the sorted ground truth events for the satellite.
+        Returns the fault type of the most recent event at or before the timestamp.
+
+        Args:
+            sat_id: Satellite identifier
+            timestamp_s: Timestamp to search for
+
+        Returns:
+            Fault type (None for nominal) or None if no ground truth found
+        """
+        if sat_id not in self._ground_truth_by_sat:
+            return None
+
+        events = self._ground_truth_by_sat[sat_id]
+        if not events:
+            return None
+
+        # Binary search to find the rightmost event <= timestamp_s
+        idx = bisect.bisect_right(events, timestamp_s, key=lambda e: e.timestamp_s) - 1
+
+        if idx < 0:
+            return None
+
+        return events[idx].expected_fault_type
+
     def reset(self) -> None:
         """Clear all data."""
         self.ground_truth_events.clear()
         self.agent_classifications.clear()
+        self._ground_truth_by_sat.clear()
 
     def __len__(self) -> int:
         """Return number of classifications."""

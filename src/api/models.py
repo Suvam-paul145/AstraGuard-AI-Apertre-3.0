@@ -141,3 +141,59 @@ class HealthCheckResponse(BaseModel):
     mission_phase: Optional[str] = None
     components_status: Optional[Dict[str, Dict[str, Any]]] = None
     error: Optional[str] = None
+
+
+class LoginRequest(BaseModel):
+    """Login request."""
+    username: str = Field(..., min_length=3, max_length=50)
+    password: str = Field(..., min_length=8)
+
+
+class TokenResponse(BaseModel):
+    """JWT token response."""
+    access_token: str
+    token_type: str
+
+
+class UserCreateRequest(BaseModel):
+    """Request to create a new user."""
+    username: str = Field(..., min_length=3, max_length=50)
+    email: str = Field(..., pattern=r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+    role: UserRole
+    password: Optional[str] = Field(None, min_length=8)
+
+
+class UserResponse(BaseModel):
+    """User information response."""
+    id: str
+    username: str
+    email: str
+    role: str
+    created_at: datetime
+    is_active: bool
+
+
+class APIKeyCreateRequest(BaseModel):
+    """Request to create an API key."""
+    name: str = Field(..., min_length=1, max_length=100)
+    permissions: List[str] = Field(..., min_length=1)
+
+
+class APIKeyResponse(BaseModel):
+    """API key information response (without the key value)."""
+    id: str
+    name: str
+    permissions: List[str]
+    created_at: datetime
+    expires_at: Optional[datetime]
+    last_used: Optional[datetime]
+
+
+class APIKeyCreateResponse(BaseModel):
+    """API key creation response (includes the key value)."""
+    id: str
+    name: str
+    key: str
+    permissions: List[str]
+    created_at: datetime
+    expires_at: Optional[datetime]
