@@ -6,6 +6,7 @@ FastAPI-based REST API for telemetry ingestion and anomaly detection.
 
 import os
 import time
+import asyncio
 from typing import List, Optional, Any, Union
 from datetime import datetime, timedelta
 from collections import deque
@@ -413,39 +414,101 @@ def create_response(status: str, data: dict = None, **kwargs) -> dict:
     return response
 
 
+async def process_single_telemetry(telemetry: dict) -> dict:
+    """
+    Process a single telemetry item.
+    
+    Args:
+        telemetry: Telemetry data dictionary
+    
+    Returns:
+        dict with 'success', 'anomaly_detected', 'anomaly' (if detected), 'error'
+    """
+    try:
+        # Check for anomalies (detect_anomaly is already async)
+        anomaly_score = await anomaly_detector.detect_anomaly(telemetry)
+        
+        if anomaly_score > 0.7:
+            # Create anomaly event
+            anomaly = AnomalyEvent(
+                timestamp=datetime.now(),
+                metric=telemetry.get('metric', 'unknown'),
+                value=telemetry.get('value', 0.0),
+                severity_score=anomaly_score,
+                context=telemetry
+            )
+            
+            return {
+                'success': True,
+                'anomaly_detected': True,
+                'anomaly': anomaly
+            }
+        
+        return {
+            'success': True,
+            'anomaly_detected': False
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to process telemetry: {e}", exc_info=True)
+        return {
+            'success': False,
+            'error': str(e),
+            'anomaly_detected': False
+        }
+
+
 async def process_telemetry_batch(telemetry_list: list) -> dict:
-    """Process a batch of telemetry data and return aggregated results."""
+    """
+    Process a batch of telemetry data concurrently.
+    
+    Uses asyncio.gather() to process items in parallel for better performance.
+    
+    Args:
+        telemetry_list: List of telemetry data dictionaries
+    
+    Returns:
+        dict with 'processed' count and 'anomalies_detected' count
+    """
+    if not telemetry_list:
+        return {"processed": 0, "anomalies_detected": 0}
+    
+    # Create tasks for concurrent processing
+    tasks = [process_single_telemetry(t) for t in telemetry_list]
+    
+    # Process concurrently with error handling
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    # Aggregate results
     processed_count = 0
     anomalies_detected = 0
-
-    for telemetry in telemetry_list:
-        try:
-            # Process individual telemetry (extracted from submit_telemetry logic)
-            processed_count += 1
-
-            # Check for anomalies
-            anomaly_score = anomaly_detector.detect_anomaly(telemetry)
-            if anomaly_score > 0.7:
-                anomalies_detected += 1
-
-                # Store anomaly
-                anomaly = AnomalyEvent(
-                    timestamp=datetime.now(),
-                    metric=telemetry.get('metric', 'unknown'),
-                    value=telemetry.get('value', 0.0),
-                    severity_score=anomaly_score,
-                    context=telemetry
-                )
-                async with anomaly_lock:
-                    anomaly_history.append(anomaly)
-
-        except Exception as e:
-            logger.error(f"Failed to process telemetry: {e}")
+    detected_anomalies = []
+    
+    for result in results:
+        # Handle exceptions from gather
+        if isinstance(result, Exception):
+            logger.error(f"Task failed with exception: {result}", exc_info=True)
             continue
+        
+        # Count successful processing
+        if result.get('success'):
+            processed_count += 1
+            
+            # Collect detected anomalies
+            if result.get('anomaly_detected'):
+                anomalies_detected += 1
+                detected_anomalies.append(result['anomaly'])
+    
+    # Store all anomalies at once with lock (more efficient than multiple appends)
+    if detected_anomalies:
+        async with anomaly_lock:
+            anomaly_history.extend(detected_anomalies)
+    
     return {
         "processed": processed_count,
         "anomalies_detected": anomalies_detected
     }
+
 # ============================================================================
 # API Endpoints
 # ============================================================================
