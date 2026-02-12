@@ -768,19 +768,46 @@ async def submit_telemetry_batch(batch: TelemetryBatch, current_user: User = Dep
     Returns:
         BatchAnomalyResponse with aggregated results
     """
-    results = []
+    # Process telemetry in parallel using asyncio.gather for better performance
+    tasks = [submit_telemetry(telemetry) for telemetry in batch.telemetry]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    # Handle any exceptions that occurred during processing
+    processed_results = []
     anomalies_detected = 0
 
-    for telemetry in batch.telemetry:
-        result = await submit_telemetry(telemetry)
-        results.append(result)
-        if result.is_anomaly:
-            anomalies_detected += 1
+    for i, result in enumerate(results):
+        if isinstance(result, Exception):
+            # Log the error and create a failed response
+            logger.error(f"Failed to process telemetry {i}: {result}")
+            # Create a minimal error response
+            error_response = AnomalyResponse(
+                is_anomaly=False,
+                anomaly_score=0.0,
+                anomaly_type="processing_error",
+                severity_score=0.0,
+                severity_level="LOW",
+                mission_phase=state_machine.get_current_phase().value if state_machine else "UNKNOWN",
+                recommended_action="RETRY",
+                escalation_level="NO_ACTION",
+                is_allowed=True,
+                allowed_actions=[],
+                should_escalate_to_safe_mode=False,
+                confidence=0.0,
+                reasoning=f"Processing failed: {str(result)}",
+                recurrence_count=0,
+                timestamp=datetime.now()
+            )
+            processed_results.append(error_response)
+        else:
+            processed_results.append(result)
+            if result.is_anomaly:
+                anomalies_detected += 1
 
     return BatchAnomalyResponse(
-        total_processed=len(results),
+        total_processed=len(processed_results),
         anomalies_detected=anomalies_detected,
-        results=results
+        results=processed_results
     )
 
 
