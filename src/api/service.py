@@ -675,11 +675,12 @@ async def _process_telemetry(telemetry: TelemetryInput, request_start: float) ->
             "timestamp": datetime.now()
         }
 
-    # Detect anomaly (uses heuristic if model not loaded)
-    is_anomaly, anomaly_score = await detect_anomaly(data)
-
-    # Classify fault type
-    anomaly_type = classify(data)
+    # Run detect_anomaly() and classify() concurrently for better performance
+    # detect_anomaly is async, classify is sync (run in thread pool)
+    (is_anomaly, anomaly_score), anomaly_type = await asyncio.gather(
+        detect_anomaly(data),
+        asyncio.to_thread(classify, data)
+    )
 
     # Predictive Maintenance: Add training data and check for predictions
     predictive_actions = []
