@@ -1,35 +1,21 @@
 """
-AstraGuard AI REST API Service.
+AstraGuard AI REST API Service
 
-This module provides a FastAPI-based REST API for telemetry ingestion,
-real-time anomaly detection, and system monitoring in the AstraGuard AI system.
-It integrates with various components including state machines, anomaly detectors,
-memory stores, and predictive maintenance engines.
-
-The API supports:
-- Telemetry data submission and batch processing
-- Anomaly detection with phase-aware handling
-- System health monitoring and status reporting
-- Mission phase management
-- Authentication and authorization
-- Chaos engineering for testing resilience
-- Observability and metrics collection
-
-Attributes:
-    MAX_ANOMALY_HISTORY_SIZE (int): Maximum number of anomalies to keep in memory.
-    OBSERVABILITY_ENABLED (bool): Flag indicating if observability modules are available.
+FastAPI-based REST API for telemetry ingestion and anomaly detection.
 """
 
 import os
 import time
 import asyncio
+from typing import List, Optional, Any, Union
 from datetime import datetime, timedelta
-from typing import List
 from collections import deque
+from asyncio import Lock
 from fastapi import FastAPI, HTTPException, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from contextlib import asynccontextmanager
+from typing import AsyncGenerator
 import secrets
 from core.secrets import get_secret, mask_secret
 from pydantic import BaseModel
@@ -47,6 +33,13 @@ from api.models import (
     AnomalyHistoryQuery,
     AnomalyHistoryResponse,
     HealthCheckResponse,
+    UserCreateRequest,
+    UserResponse,
+    APIKeyCreateRequest,
+    APIKeyResponse,
+    APIKeyCreateResponse,
+    LoginRequest,
+    TokenResponse,
 )
 from core.auth import (
     get_auth_manager,
@@ -59,13 +52,6 @@ from core.auth import (
     Permission,
     User,
     APIKey,
-    UserCreateRequest,
-    UserResponse,
-    APIKeyCreateRequest,
-    APIKeyResponse,
-    APIKeyCreateResponse,
-    LoginRequest,
-    TokenResponse,
 )
 from api.auth import get_api_key
 from state_machine.state_engine import StateMachine, MissionPhase
@@ -85,6 +71,7 @@ from core.metrics import get_metrics_text, get_metrics_content_type
 from core.rate_limiter import RateLimiter, RateLimitMiddleware, get_rate_limit_config
 from backend.redis_client import RedisClient
 import numpy as np
+from numpy.typing import NDArray
 from astraguard.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -101,14 +88,14 @@ try:
     )
     from astraguard.tracing import initialize_tracing, setup_auto_instrumentation, instrument_fastapi, span_anomaly_detection
     from astraguard.logging_config import setup_json_logging, get_logger, log_request, log_detection, log_error
-    OBSERVABILITY_ENABLED = True
+    OBSERVABILITY_ENABLED: bool = True
 except ImportError:
     OBSERVABILITY_ENABLED = False
     print("Warning: Observability modules not available. Running without monitoring.")
 
 
 # Configuration
-MAX_ANOMALY_HISTORY_SIZE = 10000  # Maximum number of anomalies to keep in memory
+MAX_ANOMALY_HISTORY_SIZE: int = 10000  # Maximum number of anomalies to keep in memory
 
 # Global state
 state_machine = None
@@ -119,36 +106,22 @@ predictive_engine = None
 latest_telemetry_data = None # Store latest telemetry for dashboard
 anomaly_history = deque(maxlen=MAX_ANOMALY_HISTORY_SIZE)  # Bounded deque prevents memory exhaustion
 active_faults = {} # Stores active chaos experiments: {fault_type: expiration_timestamp}
+
+# Locks for global state protection
+telemetry_lock = Lock()
+anomaly_lock = Lock()
+faults_lock = Lock()
 start_time = time.time()
 
-# Thread-safety for global state updates
-global_state_lock = asyncio.Lock()
 
 # Rate limiting
-redis_client = None
-telemetry_limiter = None
-api_limiter = None
+redis_client: Optional[RedisClient] = None
+telemetry_limiter: Optional[RateLimiter] = None
+api_limiter: Optional[RateLimiter] = None
 
 
-async def initialize_components():
-    """Initialize core application components on startup or in tests.
-
-    This function sets up the essential components required for the AstraGuard AI system,
-    including state management, policy handling, anomaly detection, memory storage,
-    and predictive maintenance. Components are initialized lazily to avoid unnecessary
-    resource allocation.
-
-    Global Variables Modified:
-        state_machine: Mission phase state machine
-        policy_loader: Mission phase policy configuration loader
-        phase_aware_handler: Phase-aware anomaly decision handler
-        memory_store: Adaptive memory storage for anomaly patterns
-        predictive_engine: Predictive maintenance engine for failure prediction
-
-    Note:
-        This function is idempotent - calling it multiple times will not
-        reinitialize already existing components.
-    """
+async def initialize_components() -> None:
+    """Initialize application components (called on startup or in tests)."""
     global state_machine, policy_loader, phase_aware_handler, memory_store, predictive_engine
 
     if state_machine is None:
@@ -163,7 +136,7 @@ async def initialize_components():
         predictive_engine = await get_predictive_maintenance_engine(memory_store)
 
 
-def _check_credential_security():
+def _check_credential_security() -> None:
     """
     Check and warn about insecure credential configurations at startup.
 
@@ -174,8 +147,8 @@ def _check_credential_security():
     """
     global _USING_DEFAULT_CREDENTIALS
 
-    metrics_user = get_secret("METRICS_USER")
-    metrics_password = get_secret("METRICS_PASSWORD")
+    metrics_user: Optional[str] = get_secret("METRICS_USER")
+    metrics_password: Optional[str] = get_secret("METRICS_PASSWORD")
     metrics_user = get_secret("metrics_user")
     metrics_password = get_secret("metrics_password")
 
@@ -198,7 +171,7 @@ def _check_credential_security():
         return
 
     # List of weak/common credentials to warn about
-    weak_credentials = [
+    weak_credentials: List[Tuple[str, str]] = [
         ("admin", "admin"),
         ("admin", "password"),
         ("root", "root"),
@@ -215,7 +188,7 @@ def _check_credential_security():
             print("\n" + "=" * 70)
             print("[CRITICAL] SECURITY WARNING: Using default/weak credentials!")
             print("=" * 70)
-            print(f"Detected credentials: {get_secret_masked('metrics_user')}/{get_secret_masked('metrics_password')}")
+            print(f"Detected credentials: {mask_secret(metrics_user)}/{mask_secret(metrics_password)}")
             print()
             print("[WARNING] THESE CREDENTIALS ARE PUBLICLY KNOWN AND INSECURE!")
             print()
@@ -243,33 +216,8 @@ def _check_credential_security():
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Application lifespan manager for startup and shutdown operations.
-
-    This async context manager handles the complete lifecycle of the FastAPI application,
-    performing initialization tasks on startup and cleanup tasks on shutdown. It ensures
-    all critical components are properly initialized before accepting requests and
-    gracefully cleaned up when the application terminates.
-
-    Startup Operations:
-        1. Security credential validation and warnings
-        2. Core component initialization (state machine, anomaly detector, etc.)
-        3. Anomaly detection model pre-loading
-        4. Rate limiting setup with Redis
-        5. Observability system initialization (metrics, tracing, logging)
-
-    Shutdown Operations:
-        1. Memory store persistence
-        2. Redis client connection cleanup
-
-    Yields:
-        None: Control is yielded back to FastAPI after startup, before shutdown cleanup.
-
-    Note:
-        Rate limiting middleware cannot be added here due to Starlette/FastAPI limitations
-        - the middleware stack is locked after app startup. Rate limiting is handled
-        at the endpoint level instead.
-    """
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    """Application lifespan manager."""
     global redis_client, telemetry_limiter, api_limiter
 
     # Security: Check credentials at startup
@@ -277,18 +225,18 @@ async def lifespan(app: FastAPI):
 
     # Initialize components
     await initialize_components()
-
+    
     # Pre-load anomaly detection model async
     await load_model()
 
     # Initialize rate limiting
     try:
-        redis_url = get_secret("redis_url")
+        redis_url: Optional[str] = get_secret("redis_url")
         redis_client = RedisClient(redis_url=redis_url)
         await redis_client.connect()
 
         # Get rate limit configurations
-        rate_configs = get_rate_limit_config()
+        rate_configs: Dict[str, Tuple[int, int]] = get_rate_limit_config()
 
         # Create rate limiters
         telemetry_limiter = RateLimiter(
@@ -329,7 +277,7 @@ async def lifespan(app: FastAPI):
 
     # Cleanup
     if memory_store:
-        memory_store.save()
+        await memory_store.save()
     if redis_client:
         await redis_client.close()
 
@@ -367,7 +315,7 @@ security = HTTPBasic()
 # Credential validation flag (set during startup)
 _USING_DEFAULT_CREDENTIALS = False
 
-def get_current_username(credentials: HTTPBasicCredentials = Depends(security)):
+def get_current_username(credentials: HTTPBasicCredentials = Depends(security)) -> str:
     """
     Validate HTTP Basic Auth credentials for metrics endpoint.
 
@@ -424,45 +372,34 @@ def get_current_username(credentials: HTTPBasicCredentials = Depends(security)):
 # Helper Functions
 # ============================================================================
 
-def check_chaos_injection(fault_type: str) -> bool:
-    """Check if a chaos fault is currently active.
-
-    This function is used for chaos engineering testing to simulate system failures.
-    It checks if a specific fault type is currently injected and active, automatically
-    cleaning up expired faults.
-
-    Args:
-        fault_type (str): The type of chaos fault to check (e.g., "network_latency",
-                         "model_loader", "redis_failure").
-
-    Returns:
-        bool: True if the fault is currently active, False otherwise.
-
-    Note:
-        Expired faults are automatically removed from the active_faults dictionary
-        to prevent memory leaks during chaos testing.
-    """
-    if fault_type in active_faults:
-        expiration = active_faults[fault_type]
-        if time.time() > expiration:
-            del active_faults[fault_type]
-            return False
-        return True
-    return False
+async def check_chaos_injection(fault_type: str) -> bool:
+    """Check if a chaos fault is currently active."""
+    async with faults_lock:
+        if fault_type in active_faults:
+            expiration = active_faults[fault_type]
+            if time.time() > expiration:
+                del active_faults[fault_type]
+                return False
+            return True
+        return False
 
 
-def cleanup_expired_faults():
+async def cleanup_expired_faults():
+
     """Clean up expired chaos faults."""
     current_time = time.time()
-    expired = [k for k, v in active_faults.items() if current_time > v]
-    for k in expired:
-        del active_faults[k]
+    async with faults_lock:
+        expired = [k for k, v in active_faults.items() if current_time > v]
+        for k in expired:
+            del active_faults[k]
 
 
-def inject_chaos_fault(fault_type: str, duration_seconds: int) -> dict:
+async def inject_chaos_fault(fault_type: str, duration_seconds: int) -> dict:
+
     """Inject a chaos fault for the specified duration."""
     expiration = time.time() + duration_seconds
-    active_faults[fault_type] = expiration
+    async with faults_lock:
+        active_faults[fault_type] = expiration
     return {
         "status": "injected",
         "fault": fault_type,
@@ -470,7 +407,7 @@ def inject_chaos_fault(fault_type: str, duration_seconds: int) -> dict:
     }
 
 
-def create_response(status: str, data: dict = None, **kwargs) -> dict:
+def create_response(status: str, data: Optional[Dict[str, Any]] = None, **kwargs: Any) -> Dict[str, Any]:
     """Create a standardized API response with timestamp."""
     response = {
         "status": status,
@@ -482,54 +419,106 @@ def create_response(status: str, data: dict = None, **kwargs) -> dict:
     return response
 
 
-def process_telemetry_batch(telemetry_list: list) -> dict:
+async def process_single_telemetry(telemetry: dict) -> dict:
     """
-    Process a batch of telemetry data and return aggregated results.
-
-    Iterates through specific telemetry items, running anomaly detection on each.
-    Aggregates statistics on processed items and detected anomalies.
-
+    Process a single telemetry item.
+    
     Args:
-        telemetry_list (list): List of telemetry data dictionaries or objects.
-
+        telemetry: Telemetry data dictionary
+    
     Returns:
-        dict: Summary containing 'processed' count and 'anomalies_detected' count.
+        dict with 'success', 'anomaly_detected', 'anomaly' (if detected), 'error'
     """
+    try:
+        # Check for anomalies (detect_anomaly is already async)
+        anomaly_score = await anomaly_detector.detect_anomaly(telemetry)
+        
+        if anomaly_score > 0.7:
+            # Create anomaly event
+            anomaly = AnomalyEvent(
+                timestamp=datetime.now(),
+                metric=telemetry.get('metric', 'unknown'),
+                value=telemetry.get('value', 0.0),
+                severity_score=anomaly_score,
+                context=telemetry
+            )
+            
+            return {
+                'success': True,
+                'anomaly_detected': True,
+                'anomaly': anomaly
+            }
+        
+        return {
+            'success': True,
+            'anomaly_detected': False
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to process telemetry: {e}", exc_info=True)
+        return {
+            'success': False,
+            'error': str(e),
+            'anomaly_detected': False
+        }
+
+
+async def process_telemetry_batch(telemetry_list: list) -> dict:
+    """
+    Process a batch of telemetry data concurrently.
+    
+    Uses asyncio.gather() to process items in parallel for better performance.
+    
+    Args:
+        telemetry_list: List of telemetry data dictionaries
+    
+    Returns:
+        dict with 'processed' count and 'anomalies_detected' count
+    """
+    if not telemetry_list:
+        return {"processed": 0, "anomalies_detected": 0}
+    
+    # Create tasks for concurrent processing
+    tasks = [process_single_telemetry(t) for t in telemetry_list]
+    
+    # Process concurrently with error handling
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    # Aggregate results
     processed_count = 0
     anomalies_detected = 0
-
-    for telemetry in telemetry_list:
-        try:
-            # Process individual telemetry (extracted from submit_telemetry logic)
-            processed_count += 1
-
-            # Check for anomalies
-            anomaly_score = anomaly_detector.detect_anomaly(telemetry)
-            if anomaly_score > 0.7:
-                anomalies_detected += 1
-
-                # Store anomaly
-                anomaly = AnomalyEvent(
-                    timestamp=datetime.now(),
-                    metric=telemetry.get('metric', 'unknown'),
-                    value=telemetry.get('value', 0.0),
-                    severity_score=anomaly_score,
-                    context=telemetry
-                )
-                anomaly_history.append(anomaly)
-
-        except Exception as e:
-            logger.error(f"Failed to process telemetry: {e}")
+    detected_anomalies = []
+    
+    for result in results:
+        # Handle exceptions from gather
+        if isinstance(result, Exception):
+            logger.error(f"Task failed with exception: {result}", exc_info=True)
             continue
+        
+        # Count successful processing
+        if result.get('success'):
+            processed_count += 1
+            
+            # Collect detected anomalies
+            if result.get('anomaly_detected'):
+                anomalies_detected += 1
+                detected_anomalies.append(result['anomaly'])
+    
+    # Store all anomalies at once with lock (more efficient than multiple appends)
+    if detected_anomalies:
+        async with anomaly_lock:
+            anomaly_history.extend(detected_anomalies)
+    
     return {
         "processed": processed_count,
         "anomalies_detected": anomalies_detected
     }
+
 # ============================================================================
 # API Endpoints
 # ============================================================================
 @app.get("/", response_model=HealthCheckResponse)
-async def root():
+async def root() -> HealthCheckResponse:
     """Root endpoint - health check."""
     return HealthCheckResponse(
         status="healthy",
@@ -539,7 +528,7 @@ async def root():
 
 
 @app.get("/metrics", tags=["monitoring"])
-async def get_metrics():
+async def get_metrics() -> Response:
     """
     Prometheus metrics endpoint.
     
@@ -551,7 +540,7 @@ async def get_metrics():
     - Recovery actions
     """
     if not OBSERVABILITY_ENABLED:
-        return {"error": "Observability not enabled"}
+        return Response(content="Observability not enabled", media_type="text/plain", status_code=503)
     
     from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
     from starlette.responses import Response
@@ -560,7 +549,7 @@ async def get_metrics():
 
 
 @app.get("/health", response_model=HealthCheckResponse)
-async def health_check():
+async def health_check() -> HealthCheckResponse:
     """Health check endpoint."""
     try:
         # Get component health status
@@ -569,7 +558,7 @@ async def health_check():
 
         # Determine overall status
         all_healthy = all(
-            c.get("status") == "healthy" for c in components.values()
+            c.get("status") == "HEALTHY" for c in components.values()
         )
 
         # Get system uptime
@@ -577,7 +566,10 @@ async def health_check():
 
         # Get current mission phase
         try:
-            mission_phase = state_machine.get_current_phase().value
+            if state_machine is not None:
+                mission_phase = state_machine.get_current_phase().value
+            else:
+                mission_phase = "UNKNOWN"
         except:
             mission_phase = "UNKNOWN"
 
@@ -607,8 +599,120 @@ async def health_check():
         )
 
 
+@app.get("/health/live")
+async def health_live() -> Dict[str, Any]:
+    """
+    Liveness probe endpoint.
+    
+    Returns 200 if the service is running and can handle requests.
+    This is a lightweight check that doesn't verify dependencies.
+    
+    Used by Kubernetes/Docker for liveness probes.
+    """
+    return {
+        "status": "alive",
+        "timestamp": datetime.now().isoformat(),
+        "version": "1.0.0"
+    }
+
+
+@app.get("/health/ready")
+async def health_ready() -> Dict[str, Any]:
+    """
+    Readiness probe endpoint.
+    
+    Returns 200 if the service is ready to accept traffic.
+    Checks all critical dependencies:
+    - Redis connectivity
+    - Database connection (if applicable)
+    - Component health
+    
+    Used by Kubernetes/Docker for readiness probes.
+    Returns 503 if any critical dependency is unavailable.
+    """
+    checks = {
+        "redis": {"status": "unknown", "message": ""},
+        "components": {"status": "unknown", "message": ""},
+        "overall": {"status": "unknown", "ready": False}
+    }
+    
+    all_ready = True
+    
+    # Check Redis connectivity
+    try:
+        if redis_client is not None:
+            # Try to ping Redis
+            await redis_client.redis.ping()
+            checks["redis"] = {
+                "status": "healthy",
+                "message": "Redis connection active"
+            }
+        else:
+            checks["redis"] = {
+                "status": "not_configured",
+                "message": "Redis client not initialized (optional)"
+            }
+            # Redis is optional, don't fail readiness
+    except Exception as e:
+        checks["redis"] = {
+            "status": "unhealthy",
+            "message": f"Redis connection failed: {str(e)}"
+        }
+        all_ready = False
+    
+    # Check component health
+    try:
+        health_monitor = get_health_monitor()
+        components = health_monitor.get_all_health()
+        
+        unhealthy_components = [
+            name for name, comp in components.items()
+            if comp.get("status") != "HEALTHY"
+        ]
+        
+        if unhealthy_components:
+            checks["components"] = {
+                "status": "degraded",
+                "message": f"Unhealthy components: {', '.join(unhealthy_components)}"
+            }
+            all_ready = False
+        else:
+            checks["components"] = {
+                "status": "healthy",
+                "message": f"All {len(components)} components healthy"
+            }
+    except Exception as e:
+        checks["components"] = {
+            "status": "error",
+            "message": f"Component health check failed: {str(e)}"
+        }
+        all_ready = False
+    
+    # Set overall status
+    checks["overall"] = {
+        "status": "ready" if all_ready else "not_ready",
+        "ready": all_ready
+    }
+    
+    # Return appropriate HTTP status code
+    status_code = status.HTTP_200_OK if all_ready else status.HTTP_503_SERVICE_UNAVAILABLE
+    
+    response_data = {
+        "status": "ready" if all_ready else "not_ready",
+        "timestamp": datetime.now().isoformat(),
+        "version": "1.0.0",
+        "checks": checks
+    }
+    
+    return Response(
+        content=json.dumps(response_data, default=str),
+        media_type="application/json",
+        status_code=status_code
+    )
+
+
 @app.get("/metrics")
-async def metrics(username: str = Depends(get_current_username)):
+async def metrics(username: str = Depends(get_current_username)) -> Response:
     """Prometheus metrics endpoint."""
     return Response(
         content=get_metrics_text(), 
@@ -619,52 +723,12 @@ async def metrics(username: str = Depends(get_current_username)):
 @app.post("/api/v1/telemetry", response_model=AnomalyResponse, status_code=status.HTTP_200_OK)
 async def submit_telemetry(telemetry: TelemetryInput, current_user: User = Depends(require_operator)):
     """
-    Submit a single telemetry data point for real-time anomaly detection and analysis.
+    Submit single telemetry point for anomaly detection.
 
-    This endpoint orchestrates the complete AstraGuard AI pipeline:
-    1. Validates input against physical constraints.
-    2. Runs anomaly detection models (e.g., Isolation Forest, Autoencoder).
-    3. Classifies the type of anomaly if detected.
-    4. Consults the Phase-Aware Handler for context-specific decisions.
-    5. Updates predictive maintenance models.
-
-    The system analyzes sensor readings and provides immediate feedback on system
-    health, recommended actions, and mission phase policy compliance.
-
-    Authentication:
-        Requires API key with 'operator' role and 'write' permission.
-
-    Chaos Engineering:
-        Supports chaos injection for testing resilience (e.g., network latency,
-        model failures).
-
-    Args:
-        telemetry (TelemetryInput): Sensor data from the satellite subsystem including:
-            - voltage: Electrical voltage reading
-            - temperature: Temperature sensor reading
-            - gyro: Gyroscope measurements
-            - current: Current draw (optional)
-            - wheel_speed: Wheel speed (optional)
-            - Additional system metrics (CPU, memory, network, etc.)
-        current_user (User): The authenticated operator.
+    Requires API key authentication with 'write' permission.
 
     Returns:
-        AnomalyResponse: Comprehensive analysis result containing:
-            - Detection results (is_anomaly, anomaly_score, anomaly_type)
-            - Severity assessment and recommended actions
-            - Mission phase context and policy decisions
-            - Confidence scores and reasoning
-            - Recurrence information
-
-    Raises:
-        HTTPException 401: Authentication failed
-        HTTPException 403: Insufficient permissions
-        HTTPException 503: Service unavailable (chaos injection or system issues)
-        HTTPException 500: Internal processing error
-
-    Note:
-        Processing includes ML-based anomaly detection, predictive maintenance analysis,
-        and storage in memory for pattern recognition. Results are logged for monitoring.
+        AnomalyResponse with detection results and recommended actions
     """
     request_start = time.time()
     
@@ -713,28 +777,12 @@ async def submit_telemetry(telemetry: TelemetryInput, current_user: User = Depen
 
 
 async def _process_telemetry(telemetry: TelemetryInput, request_start: float) -> AnomalyResponse:
-    """Process telemetry data through the complete anomaly detection pipeline.
-
-    This internal function handles the complete telemetry processing workflow:
-    1. Data conversion and validation
-    2. Anomaly detection using ML models or heuristics
-    3. Fault classification
-    4. Predictive maintenance analysis
-    5. Phase-aware decision making
-    6. Response construction and storage
-
-    Args:
-        telemetry: Input telemetry data from the request
-        request_start: Timestamp when request processing began (for latency tracking)
-
-    Returns:
-        AnomalyResponse: Complete analysis result with detection details, recommendations,
-                        and metadata
-
-    Note:
-        This function updates global state (latest_telemetry_data, anomaly_history)
-        and persists data to memory store for pattern analysis.
-    """
+    """Internal telemetry processing logic."""
+    # Type assertions for initialized globals
+    assert state_machine is not None
+    assert phase_aware_handler is not None
+    assert memory_store is not None
+    
     # Convert telemetry to dict
     data = {
         "voltage": telemetry.voltage,
@@ -745,17 +793,19 @@ async def _process_telemetry(telemetry: TelemetryInput, request_start: float) ->
     }
 
     # Update global latest telemetry
-    global latest_telemetry_data
-    latest_telemetry_data = {
-        "data": data,
-        "timestamp": datetime.now()
-    }
+    async with telemetry_lock:
+        global latest_telemetry_data
+        latest_telemetry_data = {
+            "data": data,
+            "timestamp": datetime.now()
+        }
 
-    # Detect anomaly (uses heuristic if model not loaded)
-    is_anomaly, anomaly_score = await detect_anomaly(data)
-
-    # Classify fault type
-    anomaly_type = classify(data)
+    # Run detect_anomaly() and classify() concurrently for better performance
+    # detect_anomaly is async, classify is sync (run in thread pool)
+    (is_anomaly, anomaly_score), anomaly_type = await asyncio.gather(
+        detect_anomaly(data),
+        asyncio.to_thread(classify, data)
+    )
 
     # Predictive Maintenance: Add training data and check for predictions
     predictive_actions = []
@@ -824,34 +874,26 @@ async def _process_telemetry(telemetry: TelemetryInput, request_start: float) ->
         )
 
         # Store in history
-        anomaly_history.append(response)
+        async with anomaly_lock:
+            anomaly_history.append(response)
 
         # Store in memory with embedding (simple feature vector)
-        try:
-            embedding = np.array([
-                telemetry.voltage,
-                telemetry.temperature,
-                abs(telemetry.gyro),
-                telemetry.current or 0.0,
-                telemetry.wheel_speed or 0.0
-            ], dtype=np.float32)  # Ensure consistent dtype
-            
-            # Validate embedding before writing
-            if not np.isfinite(embedding).all():
-                logger.warning(f"Invalid embedding values detected, skipping memory write: {embedding}")
-            else:
-                memory_store.write(
-                    embedding=embedding,
-                    metadata={
-                        "anomaly_type": anomaly_type,
-                        "severity": anomaly_score,
-                        "critical": decision['should_escalate_to_safe_mode']
-                    },
-                    timestamp=telemetry.timestamp
-                )
-        except Exception as e:
-            # Don't fail the request if memory write fails
-            logger.error(f"Failed to write to memory store: {e}")
+        embedding = np.array([
+            telemetry.voltage,
+            telemetry.temperature,
+            abs(telemetry.gyro),
+            telemetry.current or 0.0,
+            telemetry.wheel_speed or 0.0
+        ])
+        await memory_store.write(
+            embedding=embedding,
+            metadata={
+                "anomaly_type": anomaly_type,
+                "severity": anomaly_score,
+                "critical": decision['should_escalate_to_safe_mode']
+            },
+            timestamp=telemetry.timestamp
+        )
 
     else:
         # No anomaly
@@ -882,40 +924,65 @@ async def _process_telemetry(telemetry: TelemetryInput, request_start: float) ->
 
 
 @app.get("/api/v1/telemetry/latest")
-async def get_latest_telemetry(api_key: APIKey = Depends(get_api_key)):
+async def get_latest_telemetry(api_key: APIKey = Depends(get_api_key)) -> Dict[str, Any]:
     """Get the most recent telemetry data point."""
-    if latest_telemetry_data is None:
-        return create_response("no_data", {"data": None, "message": "No telemetry received yet"})
-    return create_response("success", latest_telemetry_data)
+    async with telemetry_lock:
+        if latest_telemetry_data is None:
+            # Maintain backward-compatible contract: structured "no_data" response with HTTP 200
+            return create_response("no_data", None)
+        return create_response("success", latest_telemetry_data.copy())
 
 
 @app.post("/api/v1/telemetry/batch", response_model=BatchAnomalyResponse)
 async def submit_telemetry_batch(batch: TelemetryBatch, current_user: User = Depends(require_operator)):
     """
-    Submit a batch of telemetry points for efficient anomaly detection.
+    Submit batch of telemetry points for anomaly detection.
 
-    Processes multiple telemetry data points in a single request, suitable for
-    high-throughput streams or buffered data from ground stations.
-
-    Args:
-        batch (TelemetryBatch): A collection of telemetry data points.
-        current_user (User): The authenticated operator submitting the data.
+    Requires API key authentication with 'write' permission.
 
     Returns:
-        BatchAnomalyResponse: Aggregated results including total processed count,
-        number of anomalies detected, and individual result details.
-
-    Permissions:
-        Requires 'operator' role or higher with 'write' permission.
+        BatchAnomalyResponse with aggregated results
     """
-    # Process telemetry concurrently for better performance
-    results = await asyncio.gather(*[submit_telemetry(telemetry) for telemetry in batch.telemetry])
-    anomalies_detected = sum(1 for result in results if result.is_anomaly)
+    # Process telemetry in parallel using asyncio.gather for better performance
+    tasks = [submit_telemetry(telemetry) for telemetry in batch.telemetry]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    # Handle any exceptions that occurred during processing
+    processed_results = []
+    anomalies_detected = 0
+
+    for i, result in enumerate(results):
+        if isinstance(result, Exception):
+            # Log the error and create a failed response
+            logger.error(f"Failed to process telemetry {i}: {result}")
+            # Create a minimal error response
+            error_response = AnomalyResponse(
+                is_anomaly=False,
+                anomaly_score=0.0,
+                anomaly_type="processing_error",
+                severity_score=0.0,
+                severity_level="LOW",
+                mission_phase=state_machine.get_current_phase().value if state_machine else "UNKNOWN",
+                recommended_action="RETRY",
+                escalation_level="NO_ACTION",
+                is_allowed=True,
+                allowed_actions=[],
+                should_escalate_to_safe_mode=False,
+                confidence=0.0,
+                reasoning=f"Processing failed: {str(result)}",
+                recurrence_count=0,
+                timestamp=datetime.now()
+            )
+            processed_results.append(error_response)
+        else:
+            processed_results.append(result)
+            if result.is_anomaly:
+                anomalies_detected += 1
 
     return BatchAnomalyResponse(
-        total_processed=len(results),
+        total_processed=len(processed_results),
         anomalies_detected=anomalies_detected,
-        results=results
+        results=processed_results
     )
 
 
@@ -925,6 +992,8 @@ async def get_status(api_key: APIKey = Depends(get_api_key)):
 
     Requires API key authentication with 'read' permission.
     """
+    assert state_machine is not None
+    
     health_monitor = get_health_monitor()
     components = health_monitor.get_all_health()
 
@@ -937,7 +1006,7 @@ async def get_status(api_key: APIKey = Depends(get_api_key)):
 
     return SystemStatus(
         status="healthy" if all(
-            c.get("status") == "healthy" for c in components.values()
+            c.get("status") == "HEALTHY" for c in components.values()
         ) else "degraded",
         mission_phase=state_machine.get_current_phase().value,
         components=components,
@@ -947,11 +1016,14 @@ async def get_status(api_key: APIKey = Depends(get_api_key)):
 
 
 @app.get("/api/v1/phase", response_model=dict)
-async def get_phase(api_key: APIKey = Depends(get_api_key)):
+async def get_phase(api_key: APIKey = Depends(get_api_key)) -> Dict[str, Any]:
     """Get current mission phase.
 
     Requires API key authentication with 'read' permission.
     """
+    assert state_machine is not None
+    assert phase_aware_handler is not None
+    
     current_phase = state_machine.get_current_phase()
     constraints = phase_aware_handler.get_phase_constraints(current_phase)
 
@@ -967,6 +1039,8 @@ async def get_phase(api_key: APIKey = Depends(get_api_key)):
 @app.post("/api/v1/phase", response_model=PhaseUpdateResponse)
 async def update_phase(request: PhaseUpdateRequest, current_user: User = Depends(require_phase_update)):
     """Update mission phase."""
+    assert state_machine is not None
+    
     try:
         target_phase = MissionPhase(request.phase.value)
 
@@ -1001,6 +1075,8 @@ async def get_memory_stats(api_key: APIKey = Depends(get_api_key)):
 
     Requires API key authentication with 'read' permission.
     """
+    assert memory_store is not None
+    
     stats = memory_store.get_stats()
 
     return MemoryStats(
@@ -1015,14 +1091,15 @@ async def get_memory_stats(api_key: APIKey = Depends(get_api_key)):
 @app.get("/api/v1/history/anomalies", response_model=AnomalyHistoryResponse)
 async def get_anomaly_history(
     api_key: str = Depends(get_api_key),
-    start_time: datetime = None,
-    end_time: datetime = None,
+    start_time: Optional[datetime] = None,
+    end_time: Optional[datetime] = None,
     limit: int = 100,
-    severity_min: float = None
-):
+    severity_min: Optional[float] = None
+) -> AnomalyHistoryResponse:
     """Retrieve anomaly history with optional filtering."""
     # Convert deque to list for filtering operations
-    filtered = list(anomaly_history)
+    async with anomaly_lock:
+        filtered = list(anomaly_history)
 
     # Filter by time range
     if start_time:
@@ -1047,7 +1124,7 @@ async def get_anomaly_history(
 
 # Authentication endpoints
 @app.post("/api/v1/auth/login", response_model=TokenResponse)
-async def login(request: LoginRequest):
+async def login(request: LoginRequest) -> TokenResponse:
     """Authenticate user and return JWT token."""
     auth_manager = get_auth_manager()
     token = auth_manager.authenticate_user(request.username, request.password)
@@ -1055,7 +1132,7 @@ async def login(request: LoginRequest):
 
 
 @app.post("/api/v1/auth/users", response_model=UserResponse)
-async def create_user(request: UserCreateRequest, current_user: User = Depends(require_admin)):
+async def create_user(request: UserCreateRequest, current_user: User = Depends(require_admin)) -> UserResponse:
     """Create a new user (admin only)."""
     auth_manager = get_auth_manager()
     user = await auth_manager.create_user(
@@ -1075,7 +1152,7 @@ async def create_user(request: UserCreateRequest, current_user: User = Depends(r
 
 
 @app.get("/api/v1/auth/users/me", response_model=UserResponse)
-async def get_current_user_info(current_user: User = Depends(get_current_user)):
+async def get_current_user_info(current_user: User = Depends(get_current_user)) -> UserResponse:
     """Get current user information."""
     return UserResponse(
         id=current_user.id,
@@ -1088,7 +1165,7 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
 
 
 @app.post("/api/v1/auth/apikeys", response_model=APIKeyCreateResponse)
-async def create_api_key(request: APIKeyCreateRequest, current_user: User = Depends(get_current_user)):
+async def create_api_key(request: APIKeyCreateRequest, current_user: User = Depends(get_current_user)) -> APIKeyCreateResponse:
     """Create a new API key for the current user."""
     auth_manager = get_auth_manager()
     api_key = await auth_manager.create_api_key(
@@ -1107,7 +1184,7 @@ async def create_api_key(request: APIKeyCreateRequest, current_user: User = Depe
 
 
 @app.get("/api/v1/auth/apikeys", response_model=List[APIKeyResponse])
-async def list_api_keys(current_user: User = Depends(get_current_user)):
+async def list_api_keys(current_user: User = Depends(get_current_user)) -> List[APIKeyResponse]:
     """List API keys for the current user."""
     auth_manager = get_auth_manager()
     api_keys = await auth_manager.get_user_api_keys(current_user.id)
@@ -1125,7 +1202,7 @@ async def list_api_keys(current_user: User = Depends(get_current_user)):
 
 
 @app.delete("/api/v1/auth/apikeys/{key_id}")
-async def revoke_api_key(key_id: str, current_user: User = Depends(get_current_user)):
+async def revoke_api_key(key_id: str, current_user: User = Depends(get_current_user)) -> Dict[str, str]:
     """Revoke an API key."""
     auth_manager = get_auth_manager()
     auth_manager.revoke_api_key(key_id, current_user.id)

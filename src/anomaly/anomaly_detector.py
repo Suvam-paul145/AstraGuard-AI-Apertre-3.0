@@ -84,7 +84,7 @@ async def _load_model_impl() -> bool:
 
     if os.path.exists(MODEL_PATH):
         with open(MODEL_PATH, "rb") as f:
-            _MODEL = pickle.load(f)  # noqa: S301 - model file is trusted and part of deployment
+            _MODEL = await asyncio.to_thread(pickle.load, f)  # noqa: S301 - model file is trusted and part of deployment
         _MODEL_LOADED = True
         _USING_HEURISTIC_MODE = False
         health_monitor.mark_healthy(
@@ -281,15 +281,19 @@ async def detect_anomaly(data: Dict) -> Tuple[bool, float]:
                     data.get("voltage", 8.0),
                     data.get("temperature", 25.0),
                     abs(data.get("gyro", 0.0)),
+                    data.get("current", 1.0),
+                    data.get("wheel_speed", 5.0),
                 ]
 
                 # Model prediction (assumes binary classifier)
-                is_anomalous = _MODEL.predict([features])[0]
+                is_anomalous = await asyncio.to_thread(_MODEL.predict, [features])
+                is_anomalous = is_anomalous[0]
                 score = (
-                    _MODEL.score_samples([features])[0]
+                    await asyncio.to_thread(_MODEL.score_samples, [features])
                     if hasattr(_MODEL, "score_samples")
-                    else 0.5
+                    else [0.5]
                 )
+                score = score[0]
                 # Ensure score is a valid float, default to 0.5 if None
                 if score is None:
                     score = 0.5

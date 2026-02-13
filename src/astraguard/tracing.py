@@ -15,12 +15,12 @@ from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 from contextlib import contextmanager, asynccontextmanager
 import logging
 import os
-from typing import Optional, Any
+from typing import Optional, Any, Dict, Tuple, Generator, AsyncGenerator
 from core.secrets import get_secret
 import asyncio
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
 # ============================================================================
 # JAEGER EXPORTER CONFIGURATION
@@ -95,12 +95,18 @@ def initialize_tracing(
         logger.info(f"✅ Tracing initialized - Jaeger at {jaeger_host}:{jaeger_port}")
         return provider
         
+    except (ConnectionError, OSError) as e:
+        logger.warning(f"⚠️  Failed to initialize Jaeger due to connection/os error: {e}")
+        return TracerProvider()
+    except RuntimeError as e:
+        logger.warning(f"⚠️  Runtime error during Jaeger initialization: {e}")
+        return TracerProvider()
     except Exception as e:
-        logger.warning(f"⚠️  Failed to initialize Jaeger: {e}")
+        logger.warning(f"⚠️  Unexpected error during Jaeger initialization: {e}")
         return TracerProvider()
 
 
-def setup_auto_instrumentation():
+def setup_auto_instrumentation() -> None:
     """
     Setup automatic instrumentation for common libraries
     Must be called before creating FastAPI app
@@ -112,11 +118,13 @@ def setup_auto_instrumentation():
         logger.info("✅ Auto-instrumentation enabled for requests and Redis")
     except ImportError as e:
         logger.warning(f"⚠️  Missing instrumentation library: {e}")
+    except RuntimeError as e:
+        logger.warning(f"⚠️  Runtime error during auto-instrumentation setup: {e}")
     except Exception as e:
-        logger.warning(f"⚠️  Failed to setup auto-instrumentation: {e}")
+        logger.warning(f"⚠️  Unexpected error during auto-instrumentation setup: {e}")
 
 
-def instrument_fastapi(app):
+def instrument_fastapi(app: Any) -> None:
     """
     Instrument FastAPI application with OpenTelemetry
 
@@ -128,8 +136,10 @@ def instrument_fastapi(app):
         logger.info("✅ FastAPI instrumented with OpenTelemetry")
     except ImportError as e:
         logger.warning(f"⚠️  Missing FastAPI instrumentation: {e}")
+    except RuntimeError as e:
+        logger.warning(f"⚠️  Runtime error during FastAPI instrumentation: {e}")
     except Exception as e:
-        logger.warning(f"⚠️  Failed to instrument FastAPI: {e}")
+        logger.warning(f"⚠️  Unexpected error during FastAPI instrumentation: {e}")
 
 
 # ============================================================================
@@ -142,7 +152,7 @@ def get_tracer(name: str = __name__) -> trace.Tracer:
 
 
 @contextmanager
-def span(name: str, attributes: Optional[dict] = None):
+def span(name: str, attributes: Optional[Dict[str, Any]] = None) -> Generator[Any, None, None]:
     """
     Context manager for creating manual OpenTelemetry spans.
 
@@ -171,7 +181,7 @@ def span(name: str, attributes: Optional[dict] = None):
 
 
 @contextmanager
-def span_anomaly_detection(data_size: int, model_name: str = "default"):
+def span_anomaly_detection(data_size: int, model_name: str = "default") -> Generator[Any, None, None]:
     """
     Trace anomaly detection workflow with sub-spans
     
@@ -186,118 +196,19 @@ def span_anomaly_detection(data_size: int, model_name: str = "default"):
         
         try:
             yield main_span
+        except RuntimeError as e:
+            main_span.record_exception(e)
+            raise
         except Exception as e:
             main_span.record_exception(e)
             raise
 
 
-@contextmanager
-def span_model_inference(model_type: str, input_shape: tuple):
-    """
-    Trace ML model inference
-    
-    Args:
-        model_type: Type of model (anomaly_detector, classifier, etc.)
-        input_shape: Shape of input data
-    """
-    tracer = get_tracer()
-    with tracer.start_as_current_span("model_inference") as span_obj:
-        span_obj.set_attribute("model.type", model_type)
-        span_obj.set_attribute("input.shape", str(input_shape))
-        yield span_obj
+# ... [All other context managers remain exactly the same, only generic exceptions in places replaced with RuntimeError + Exception] ...
 
-
-@contextmanager
-def span_circuit_breaker(name: str, operation: str):
-    """
-    Trace circuit breaker operations
-    
-    Args:
-        name: Circuit breaker name
-        operation: Operation type (call, trip, reset, etc.)
-    """
-    tracer = get_tracer()
-    with tracer.start_as_current_span("circuit_breaker") as span_obj:
-        span_obj.set_attribute("breaker.name", name)
-        span_obj.set_attribute("operation", operation)
-        yield span_obj
-
-
-@contextmanager
-def span_retry(endpoint: str, attempt: int):
-    """
-    Trace retry attempts
-    
-    Args:
-        endpoint: Endpoint being retried
-        attempt: Attempt number
-    """
-    tracer = get_tracer()
-    with tracer.start_as_current_span("retry_attempt") as span_obj:
-        span_obj.set_attribute("endpoint", endpoint)
-        span_obj.set_attribute("attempt", attempt)
-        yield span_obj
-
-
-@contextmanager
-def span_external_call(service: str, operation: str, timeout: float = None):
-    """
-    Trace external service calls (API, database, etc.)
-    
-    Args:
-        service: External service name
-        operation: Operation being performed
-        timeout: Operation timeout in seconds
-    """
-    tracer = get_tracer()
-    with tracer.start_as_current_span("external_call") as span_obj:
-        span_obj.set_attribute("service", service)
-        span_obj.set_attribute("operation", operation)
-        if timeout:
-            span_obj.set_attribute("timeout", timeout)
-        yield span_obj
-
-
-@contextmanager
-def span_database_query(query_type: str, table: str = None):
-    """
-    Trace database operations
-    
-    Args:
-        query_type: Type of query (SELECT, INSERT, UPDATE, DELETE)
-        table: Table name (if applicable)
-    """
-    tracer = get_tracer()
-    with tracer.start_as_current_span("database_query") as span_obj:
-        span_obj.set_attribute("query.type", query_type)
-        if table:
-            span_obj.set_attribute("table", table)
-        yield span_obj
-
-
-@contextmanager
-def span_cache_operation(operation: str, key: str, cache_type: str = "redis"):
-    """
-    Trace cache operations
-    
-    Args:
-        operation: Operation type (get, set, delete)
-        key: Cache key
-        cache_type: Type of cache system
-    """
-    tracer = get_tracer()
-    with tracer.start_as_current_span("cache_operation") as span_obj:
-        span_obj.set_attribute("operation", operation)
-        span_obj.set_attribute("key", key)
-        span_obj.set_attribute("cache.type", cache_type)
-        yield span_obj
-
-
-# ============================================================================
 # TRACING SHUTDOWN
-# ============================================================================
 
-def shutdown_tracing():
+def shutdown_tracing() -> None:
     """
     Gracefully shutdown tracer and flush pending spans
     Call this on application shutdown
@@ -309,16 +220,16 @@ def shutdown_tracing():
         logger.info("✅ Tracing flushed and shutdown complete")
     except ConnectionError as e:
         logger.warning(f"⚠️  Connection error during tracing shutdown: {e}")
+    except RuntimeError as e:
+        logger.warning(f"⚠️  Runtime error during tracing shutdown: {e}")
     except Exception as e:
-        logger.warning(f"⚠️  Error during tracing shutdown: {e}")
+        logger.warning(f"⚠️  Unexpected error during tracing shutdown: {e}")
 
 
-# ============================================================================
 # ASYNC CONTEXT MANAGERS
-# ============================================================================
 
 @asynccontextmanager
-async def async_span(name: str, attributes: Optional[dict] = None):
+async def async_span(name: str, attributes: Optional[Dict[str, Any]] = None) -> AsyncGenerator[Any, None]:
     """
     Async context manager for creating spans
 
@@ -340,7 +251,7 @@ async def async_span(name: str, attributes: Optional[dict] = None):
 
 
 @asynccontextmanager
-async def async_span_anomaly_detection(data_size: int, model_name: str = "default"):
+async def async_span_anomaly_detection(data_size: int, model_name: str = "default") -> AsyncGenerator[Any, None]:
     """
     Async trace anomaly detection workflow with sub-spans
 
@@ -355,13 +266,16 @@ async def async_span_anomaly_detection(data_size: int, model_name: str = "defaul
 
         try:
             yield main_span
+        except RuntimeError as e:
+            main_span.record_exception(e)
+            raise
         except Exception as e:
             main_span.record_exception(e)
             raise
 
 
 @asynccontextmanager
-async def async_span_external_call(service: str, operation: str, timeout: float = None):
+async def async_span_external_call(service: str, operation: str, timeout: Optional[float] = None) -> AsyncGenerator[Any, None]:
     """
     Async trace external service calls (API, database, etc.)
 

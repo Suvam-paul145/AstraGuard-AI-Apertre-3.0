@@ -3,37 +3,23 @@ Lightweight FastAPI app exposing only the contact router.
 This avoids importing the full `api.service` and its heavy dependencies
 so the contact endpoints can be run independently during development.
 """
+import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import logging
+from typing import List
 
+from api.contact import router as contact_router
 
 logger = logging.getLogger(__name__)
 
-# Import contact router
 
-try:
-    from api.contact import router as contact_router
-except ModuleNotFoundError:
-    logger.critical(
-        "Failed to import 'api.contact.router' (module not found). "
-        "Verify project structure and PYTHONPATH.",
-        exc_info=True,
-    )
-    raise
-except ImportError:
-    logger.critical(
-        "ImportError occurred while importing contact router. "
-        "This may be caused by missing dependencies or import-time side effects.",
-        exc_info=True,
-    )
-    raise
 
-# FastAPI application setup
-app = FastAPI(title="AstraGuard Contact API (dev)")
+logger: logging.Logger = logging.getLogger(__name__)
+app: FastAPI = FastAPI(title="AstraGuard Contact API (dev)")
+
 
 # Allow local frontend (python http.server) and localhost same-origin
-ALLOWED_ORIGINS = [
+ALLOWED_ORIGINS: List[str] = [
     "http://localhost:8080",
     "http://127.0.0.1:8080",
     "http://localhost:8000",

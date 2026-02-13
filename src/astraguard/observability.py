@@ -13,7 +13,7 @@ import logging
 import asyncio
 from typing import Optional, Dict, Any, Generator, AsyncGenerator, cast
 
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
 # Cache for metrics to avoid repeated registry lookups
 _metric_cache: Dict[str, Any] = {}
@@ -494,7 +494,7 @@ def get_metrics_endpoint() -> bytes:
     """
     try:
         from prometheus_client import generate_latest, REGISTRY
-        return cast(bytes, generate_latest(REGISTRY))
+        return generate_latest(REGISTRY)
     except Exception as e:
         logger.error(f"Failed to generate metrics endpoint: {e}")
         if ERRORS:
