@@ -13,6 +13,10 @@ authors = [
     {name = "AstraGuard AI Team"}
 ]
 keywords = ["satellite", "security", "anomaly-detection", "ai", "telemetry", "monitoring"]
+dependencies = [
+    "aiosqlite>=0.17.0",
+    "aiofiles>=23.0.0"
+]
 
 [project.urls]
 Repository = "https://github.com/purvanshjoshi/AstraGuard-AI"

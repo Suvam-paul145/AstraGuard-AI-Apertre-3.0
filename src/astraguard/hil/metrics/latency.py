@@ -3,6 +3,7 @@
 import time
 import csv
 import logging
+import heapq
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, asdict
 from datetime import datetime
@@ -26,29 +27,36 @@ class LatencyMeasurement:
 class LatencyCollector:
     """Captures high-resolution timing data across swarm (10Hz cadence)."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize collector with empty measurements."""
         self.measurements: List[LatencyMeasurement] = []
-        self._start_time = time.time()
+        self._start_time: float = time.time()
         self._measurement_log: Dict[str, int] = defaultdict(int)
 
     def record_fault_detection(
         self, sat_id: str, scenario_time_s: float, detection_delay_ms: float
     ) -> None:
         """
-        Record fault detection latency.
+        Record the latency of a fault detection event.
+
+        Captures the precise time elapsed between the injection of a fault and
+        its initial detection by the anomaly system.
 
         Args:
-            sat_id: Satellite identifier (e.g., "SAT1")
-            scenario_time_s: Simulation time when detected
-            detection_delay_ms: Time from fault injection to detection
+            sat_id (str): Satellite identifier (e.g., "SAT1").
+            scenario_time_s (float): Simulation time (seconds) when detection occurred.
+            detection_delay_ms (float): Time elapsed (milliseconds) from fault injection
+                                        to detection. Must be non-negative.
+
+        Raises:
+            ValueError: If inputs are invalid (empty ID, negative metrics).
         """
         if not isinstance(sat_id, str) or not sat_id.strip():
             raise ValueError(f"Invalid sat_id: must be non-empty string, got {sat_id}")
-        
+
         if not isinstance(scenario_time_s, (int, float)) or scenario_time_s < 0:
             raise ValueError(f"Invalid scenario_time_s: must be non-negative number, got {scenario_time_s}")
-        
+
         if not isinstance(detection_delay_ms, (int, float)) or detection_delay_ms < 0:
             raise ValueError(f"Invalid detection_delay_ms: must be non-negative number, got {detection_delay_ms}")
 
@@ -170,12 +178,12 @@ class LatencyCollector:
         if not self.measurements:
             return {}
 
-        by_satellite = defaultdict(lambda: defaultdict(list))
+        by_satellite: Dict[str, Dict[str, List[float]]] = defaultdict(lambda: defaultdict(list))
 
         for m in self.measurements:
             by_satellite[m.satellite_id][m.metric_type].append(m.duration_ms)
 
-        stats = {}
+        stats: Dict[str, Dict[str, Any]] = {}
         for sat_id, metrics in by_satellite.items():
             stats[sat_id] = {}
             for metric_type, latencies in metrics.items():
@@ -270,7 +278,7 @@ class LatencyCollector:
         count = len(latencies)
 
         # Use heapq to find percentiles without full sort
-        def nth_smallest(n):
+        def nth_smallest(n: int) -> float:
             return heapq.nsmallest(n, latencies)[-1] if n <= count else latencies[-1]
 
         p50_index = count // 2 + 1

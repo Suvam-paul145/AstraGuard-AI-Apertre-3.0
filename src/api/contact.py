@@ -13,8 +13,11 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, List, Any, Union
 from fastapi import APIRouter, HTTPException, Request, Depends, Query
-from pydantic import BaseModel, EmailStr, Field, validator
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from fastapi.responses import JSONResponse
+import aiosqlite
+import aiofiles
+import asyncio
 
 # Rate limiting
 try:
@@ -69,6 +72,7 @@ class ContactSubmission(BaseModel):
     
     @validator('name', 'subject', 'message')
     def sanitize_text(cls, v: str) -> str:
+
         """Remove dangerous characters to prevent XSS"""
         if v:
             # Remove HTML tags and dangerous characters
@@ -77,6 +81,7 @@ class ContactSubmission(BaseModel):
     
     @validator('email')
     def normalize_email(cls, v: str) -> str:
+
         """Normalize email to lowercase"""
         return v.lower() if v else v
 
@@ -210,12 +215,13 @@ def get_client_ip(request: Request) -> str:
     return "unknown"
 
 
-def save_submission(
+async def save_submission(
     submission: ContactSubmission,
     ip_address: str,
     user_agent: str
 ) -> Optional[int]:
     """Save submission to database and return submission ID"""
+
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
@@ -241,6 +247,7 @@ def save_submission(
 
 
 def log_notification(submission: ContactSubmission, submission_id: Optional[int]) -> None:
+
     """Log notification to file (fallback when email is not configured)"""
     DATA_DIR.mkdir(exist_ok=True)
     
@@ -253,11 +260,12 @@ def log_notification(submission: ContactSubmission, submission_id: Optional[int]
         "message": submission.message[:100] + "..." if len(submission.message) > 100 else submission.message
     }
     
-    with open(NOTIFICATION_LOG, "a") as f:
-        f.write(json.dumps(log_entry) + "\n")
+    async with aiofiles.open(NOTIFICATION_LOG, "a") as f:
+        await f.write(json.dumps(log_entry) + "\n")
 
 
 def send_email_notification(submission: ContactSubmission, submission_id: Optional[int]) -> None:
+
     """Send email notification (placeholder for SendGrid integration)"""
     # TODO: Implement SendGrid integration when SENDGRID_API_KEY is set
     if SENDGRID_API_KEY:
@@ -265,7 +273,7 @@ def send_email_notification(submission: ContactSubmission, submission_id: Option
             # Example SendGrid implementation:
             # from sendgrid import SendGridAPIClient
             # from sendgrid.helpers.mail import Mail
-            # 
+            #
             # message = Mail(
             #     from_email='noreply@astraguard.ai',
             #     to_emails=CONTACT_EMAIL,
@@ -284,10 +292,10 @@ def send_email_notification(submission: ContactSubmission, submission_id: Option
             pass
         except Exception as e:
             print(f"Email sending failed: {e}")
-            log_notification(submission, submission_id)
+            await log_notification(submission, submission_id)
     else:
         # Fallback to file logging
-        log_notification(submission, submission_id)
+        await log_notification(submission, submission_id)
 
 
 # API Endpoints
@@ -332,19 +340,45 @@ async def submit_contact_form(
     
     # Save to database
     try:
-        submission_id = save_submission(submission, ip_address, user_agent)
-    except Exception as e:
-        print(f"Database error: {e}")
+        submission_id = await save_submission(submission, ip_address, user_agent)
+    except aiosqlite.Error as e:
+        logger.error(
+            "Database save failed",
+            error_type=type(e).__name__,
+            error_message=str(e),
+            ip_address=ip_address,
+            email=submission.email,
+            subject=submission.subject
+        )
         raise HTTPException(
             status_code=500,
             detail="Failed to save submission. Please try again later."
         )
+    except Exception as e:
+        logger.error(
+            "Unexpected database error",
+            error_type=type(e).__name__,
+            error_message=str(e),
+            ip_address=ip_address,
+            email=submission.email
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="An unexpected error occurred. Please try again later."
+        )
     
     # Send notification
     try:
-        send_email_notification(submission, submission_id)
+        await send_email_notification(submission, submission_id)
     except Exception as e:
-        print(f"Notification error: {e}")
+        logger.warning(
+            "Notification failed but request succeeded",
+            error_type=type(e).__name__,
+            error_message=str(e),
+            submission_id=submission_id,
+            email=submission.email,
+            subject=submission.subject
+        )
         # Don't fail the request if notification fails
     
     return ContactResponse(
@@ -361,6 +395,7 @@ async def get_submissions(
     status_filter: Optional[str] = Query(None, regex="^(pending|resolved|spam)$"),
     current_user: Any = Depends(get_admin_user)
 ) -> SubmissionsResponse:
+
     """
     Get contact form submissions (Admin only)
     
@@ -395,7 +430,7 @@ async def get_submissions(
         ORDER BY submitted_at DESC
         LIMIT ? OFFSET ?
     """
-    params.extend([str(limit), str(offset)])
+    params.extend([limit, offset])
     
     rows = cursor.execute(query, params).fetchall()
     conn.close()
@@ -430,6 +465,7 @@ async def update_submission_status(
     status: str = Query(..., regex="^(pending|resolved|spam)$"),
     current_user: Any = Depends(get_admin_user)
 ) -> dict[str, Any]:
+
     """
     Update submission status (Admin only)
     
@@ -467,10 +503,10 @@ async def contact_health() -> dict[str, Any]:
         cursor.execute("SELECT COUNT(*) FROM contact_submissions")
         total_submissions = cursor.fetchone()[0]
         conn.close()
-        
+
         # Check rate limiting
         rate_limiter_status = "redis" if REDIS_AVAILABLE else "in-memory"
-        
+
         return {
             "status": "healthy",
             "database": "connected",
@@ -478,8 +514,24 @@ async def contact_health() -> dict[str, Any]:
             "rate_limiter": rate_limiter_status,
             "email_configured": SENDGRID_API_KEY is not None
         }
-    except Exception as e:
+    except sqlite3.Error as e:
+        logger.error(
+            "Database health check failed",
+            error_type=type(e).__name__,
+            error_message=str(e),
+            db_path=str(DB_PATH)
+        )
         raise HTTPException(
             status_code=503,
-            detail=f"Contact service unhealthy: {str(e)}"
+            detail="Database connection failed"
+        )
+    except Exception as e:
+        logger.error(
+            "Health check failed",
+            error_type=type(e).__name__,
+            error_message=str(e)
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Service health check failed"
         )

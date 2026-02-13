@@ -1,13 +1,13 @@
 {
   "keys": [
     {
-      "key": "28kL3RHlEwtLT38KoNpyirxP4QeHhuwSt9mJtKd1cKg",
+      "key": "oiYAVJk18_zyAg433_slP66VVZZkzjAVnGNZ8dDfbQM",
       "name": "default-dev-key",
-      "created_at": "2026-02-05T00:47:10.195486",
+      "created_at": "2026-02-10T23:22:01.583918",
       "expires_at": null,
       "permissions": [
-        "write",
-        "read"
+        "read",
+        "write"
       ],
       "rate_limit": 1000,
       "is_active": true,

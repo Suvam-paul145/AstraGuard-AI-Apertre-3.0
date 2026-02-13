@@ -8,6 +8,7 @@ Classes:
     ResultStorage: Handles saving, loading, and managing test result data.
 """
 
+import asyncio
 import json
 import logging
 from typing import List, Dict, Any, Optional
@@ -40,22 +41,85 @@ class ResultStorage:
         self.results_dir: Path = Path(results_dir)
         self.results_dir.mkdir(parents=True, exist_ok=True)
 
+    def _check_disk_space(self, required_mb: int = 10) -> bool:
+        """Check if sufficient disk space is available.
+        
+        Args:
+            required_mb: Minimum required space in MB
+            
+        Returns:
+            bool: True if sufficient space available
+        """
+        try:
+            import shutil
+            stat = shutil.disk_usage(self.results_dir)
+            available_mb = stat.free / (1024 * 1024)
+            
+            if available_mb < required_mb:
+                logger.warning(
+                    f"Low disk space: {available_mb:.2f}MB available, {required_mb}MB required",
+                    extra={"available_mb": available_mb, "required_mb": required_mb}
+                )
+                return False
+            return True
+        except (OSError, AttributeError) as e:
+            logger.warning(f"Could not check disk space: {e}")
+            return True  # Assume OK if check fails
+
+    def _validate_result_structure(self, result: Dict[str, Any], scenario_name: str) -> str:
+        """Validate result structure and serialize to JSON.
+        
+        Checks for common issues like unusual status values, invalid timestamp types,
+        and non-serializable data (including circular references). Uses the same
+        serialization settings as the write path to ensure consistency.
+        
+        Args:
+            result: Result dictionary to validate
+            scenario_name: Name of the scenario for context
+            
+        Returns:
+            str: JSON-serialized result string (for reuse in write)
+            
+        Raises:
+            ValueError: If result contains non-serializable or circular data
+        """
+        # Check for common result fields
+        if "status" in result and result["status"] not in ["passed", "failed", "error", "skipped"]:
+            logger.warning(
+                f"Unusual status value in result: {result['status']}",
+                extra={"scenario": scenario_name, "status": result["status"]}
+            )
+        
+        # Validate timestamp if present
+        if "timestamp" in result and not isinstance(result.get("timestamp"), (str, datetime)):
+            raise ValueError(f"timestamp must be a string or datetime, got {type(result['timestamp'])}")
+        
+        # Serialization check using same settings as write path (default=str)
+        # This validates against circular references while keeping behavior consistent
+        try:
+            return json.dumps(result, indent=2, default=str)
+        except (TypeError, ValueError, RecursionError) as e:
+            raise ValueError(f"Result contains non-serializable or circular data: {e}")
+
     def save_scenario_result(
         self, scenario_name: str, result: Dict[str, Any]
     ) -> str:
         """
-        Save individual scenario result to file.
+        Persist result data for a single HIL scenario execution.
+
+        Saves the result dictionary as a JSON file, automatically appending
+        timestamp metadata (`scenario_name_{timestamp}.json`).
 
         Args:
-            scenario_name (str): Name of scenario (without .yaml).
-            result (Dict[str, Any]): Execution result dict.
+            scenario_name (str): Name of the test scenario (e.g., "power_loss_geo").
+            result (Dict[str, Any]): The execution result object to save.
 
         Returns:
-            str: Path to saved result file.
+            str: The absolute path to the saved result file.
 
         Raises:
-            OSError: If there is an issue writing to the file.
-            ValueError: If the result dict contains non-serializable data.
+            OSError: If filesystem writes fail.
+            ValueError: If input data is invalid or non-serializable.
         """
         if not scenario_name or not isinstance(scenario_name, str):
             raise ValueError(f"Invalid scenario_name: {scenario_name}")
@@ -74,12 +138,26 @@ class ResultStorage:
             **result,
         }
 
+        # Validate and serialize result_with_metadata (reuse JSON string)
+        json_str = self._validate_result_structure(result_with_metadata, scenario_name)
+
+        if not self._check_disk_space():
+            raise OSError("Insufficient disk space to save result")
+
         try:
-            filepath.write_text(json.dumps(result_with_metadata, indent=2, default=str))
+            filepath.write_text(json_str)
             logger.info(f"Saved scenario result: {filepath}")
             return str(filepath)
-        except (OSError, IOError, PermissionError) as e:
-            logger.error(f"Failed to write result file {filepath}: {e}")
+        except OSError as e:
+            logger.error(
+                f"Failed to write result file: {e}",
+                extra={
+                    "filepath": str(filepath),
+                    "scenario": scenario_name,
+                    "error_type": type(e).__name__,
+                    "operation": "write"
+                }
+            )
             raise
         except (TypeError, ValueError) as e:
             logger.error(f"Failed to serialize result data for {scenario_name}: {e}")
@@ -114,7 +192,7 @@ class ResultStorage:
         pattern: str = f"{scenario_name}_*.json"
         result_files: List[Path] = sorted(self.results_dir.glob(pattern), reverse=True)[:limit]
 
-        for result_file in result_files:
+        async def load_result(result_file):
             try:
                 result_data = cast(Dict[str, Any], json.loads(result_file.read_text()))
                 results.append(result_data)
@@ -123,12 +201,16 @@ class ResultStorage:
             except (json.JSONDecodeError, UnicodeDecodeError) as e:
                 logger.warning(f"Corrupted result file {result_file.name}: {e}")
             except Exception as e:
-                logger.error(f"Unexpected error loading result {result_file.name}: {e}")
-
+                # Log unexpected errors but continue processing other files (best-effort)
+                logger.error(
+                    f"Unexpected error loading result {result_file.name}: {e}",
+                    extra={"file": str(result_file), "scenario": scenario_name},
+                    exc_info=True
+                )
         return results
 
-    def get_recent_campaigns(self, limit: int = 10) -> List[Dict[str, Any]]:
-        """Retrieve recent campaign summaries.
+    async def get_recent_campaigns(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """Retrieve recent campaign summaries asynchronously.
 
         Args:
             limit (int, optional): Maximum campaigns to return. Defaults to 10.
@@ -149,7 +231,7 @@ class ResultStorage:
             self.results_dir.glob("campaign_*.json"), reverse=True
         )[:limit]
 
-        for campaign_file in campaign_files:
+        async def load_campaign(campaign_file):
             try:
                 campaign_data = cast(Dict[str, Any], json.loads(campaign_file.read_text()))
                 campaigns.append(campaign_data)
@@ -158,12 +240,18 @@ class ResultStorage:
             except (json.JSONDecodeError, UnicodeDecodeError) as e:
                 logger.warning(f"Corrupted campaign file {campaign_file.name}: {e}")
             except Exception as e:
-                logger.error(f"Unexpected error loading campaign {campaign_file.name}: {e}")
+                # Log unexpected errors but continue processing other files (best-effort)
+                logger.error(
+                    f"Unexpected error loading campaign {campaign_file.name}: {e}",
+                    extra={"file": str(campaign_file)},
+                    exc_info=True
+                )
 
-        return campaigns
+        campaigns = await asyncio.gather(*[load_campaign(f) for f in campaign_files])
+        return [c for c in campaigns if c is not None]
 
-    def get_campaign_summary(self, campaign_id: str) -> Optional[Dict[str, Any]]:
-        """Retrieve specific campaign by ID.
+    async def get_campaign_summary(self, campaign_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieve specific campaign by ID asynchronously.
 
         Args:
             campaign_id (str): Campaign timestamp ID (YYYYMMDD_HHMMSS).
@@ -186,17 +274,26 @@ class ResultStorage:
         try:
             return cast(Dict[str, Any], json.loads(campaign_file.read_text()))
         except (OSError, IOError, PermissionError) as e:
-            logger.error(f"Failed to read campaign {campaign_id}: {e}")
+            logger.error(
+                f"Failed to read campaign {campaign_id}: {e}",
+                extra={"campaign_id": campaign_id, "error_type": type(e).__name__}
+            )
             return None
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
-            logger.error(f"Corrupted campaign file {campaign_id}: {e}")
+            logger.error(
+                f"Corrupted campaign file {campaign_id}: {e}",
+                extra={"campaign_id": campaign_id}
+            )
             return None
         except Exception as e:
-            logger.error(f"Unexpected error loading campaign {campaign_id}: {e}")
+            logger.critical(
+                f"Critical unexpected error loading campaign {campaign_id}: {e}",
+                exc_info=True
+            )
             return None
 
-    def get_result_statistics(self) -> Dict[str, Any]:
-        """Get aggregate statistics across all results.
+    async def get_result_statistics(self) -> Dict[str, Any]:
+        """Get aggregate statistics across all results asynchronously.
 
         Returns:
             Dict[str, Any]: Dict with statistics including total_campaigns,
@@ -222,8 +319,8 @@ class ResultStorage:
             "avg_pass_rate": avg_pass_rate,
         }
 
-    def clear_results(self, older_than_days: int = 30) -> int:
-        """Remove old result files.
+    async def clear_results(self, older_than_days: int = 30) -> int:
+        """Remove old result files asynchronously.
 
         Args:
             older_than_days (int, optional): Delete files older than this many days. Defaults to 30.
@@ -248,10 +345,24 @@ class ResultStorage:
                 if result_file.stat().st_mtime < cutoff_time:
                     result_file.unlink()
                     deleted_count += 1
-            except (OSError, IOError, PermissionError) as e:
-                logger.warning(f"Failed to delete file {result_file.name}: {e}")
+            except PermissionError as e:
+                logger.warning(
+                    f"Permission denied deleting file {result_file.name}: {e}",
+                    extra={"file": str(result_file), "operation": "delete"}
+                )
+            except FileNotFoundError:
+                # File already deleted, ignore
+                pass
+            except OSError as e:
+                logger.error(
+                    f"OS error deleting file {result_file.name}: {e}",
+                    extra={"file": str(result_file), "error_code": e.errno}
+                )
             except Exception as e:
-                logger.error(f"Unexpected error deleting file {result_file.name}: {e}")
+                logger.critical(
+                    f"Critical unexpected error deleting file {result_file.name}: {e}",
+                    exc_info=True
+                )
 
         logger.info(f"Cleanup completed: deleted {deleted_count} files older than {older_than_days} days")
         return deleted_count

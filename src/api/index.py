@@ -1,17 +1,22 @@
 """
-AstraGuard AI - Vercel Serverless Function Entry Point
-Adapts the FastAPI app for Vercel's serverless environment
+AstraGuard AI - Vercel Serverless Function Entry Point.
+
+This module adapts the standard FastAPI application (`api.service.app`) regarding
+Vercel's serverless environment. It handles path resolution for imports when
+running in a restricted lambda environment where the project root might not be
+in `sys.path` by default.
 """
 
 import sys
 import logging
 from pathlib import Path
+from typing import List
 
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
 # Resolve project root safely
 try:
-    project_root = Path(__file__).parent.parent
+    project_root: Path = Path(__file__).parent.parent
 except NameError as e:
     logger.critical(
         "__file__ is not defined; cannot resolve project root in serverless environment",
@@ -19,12 +24,7 @@ except NameError as e:
     )
     raise RuntimeError("Invalid runtime environment: __file__ is undefined") from e
 
-project_root_str = str(project_root)
-
-if project_root_str not in sys.path:
-    sys.path.insert(0, project_root_str)
-    logger.debug(
-        "Added project root to sys.path",
+project_root_str: str = str(project_root)
         extra={"project_root": project_root_str},
     )
 
@@ -47,4 +47,4 @@ except ImportError as e:
     raise
 
 # This exports the FastAPI app 
-__all__ = ["app"]
+__all__: List[str] = ["app"]

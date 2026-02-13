@@ -13,7 +13,7 @@ depending on the current mission phase.
 """
 
 import logging
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional, Tuple, List, Union
 from dataclasses import asdict
 from datetime import datetime, timedelta
 import json
@@ -64,16 +64,19 @@ def _log_with_context(
 
 class PhaseAwareAnomalyHandler:
     """
-    Handles anomalies with awareness of mission phase constraints.
-    
+    Orchestrates anomaly response based on mission phase constraints.
+
+    This handler acts as the decision-making brain of the anomaly response system.
+    It does not just report anomalies; it decides *what to do* about them based on
+    pre-defined policies for the current mission phase.
+
     Responsibilities:
-    1. Receive anomaly detection results (type, severity, confidence)
-    2. Query current mission phase from state machine
-    3. Evaluate against phase-specific policies
-    4. Generate phase-aware response decision
-    5. Log all decisions for audit and learning
-    
-    The handler is designed to be called from the anomaly detection pipeline.
+    1.  **Contextualize**: Combine anomaly data with the current mission phase.
+    2.  **Evaluate**: Apply phase-specific policies (e.g., "Ignore minor power
+        fluctuations during Launch", "Escalate thermal issues during Payload Ops").
+    3.  **Decide**: Determine the appropriate action (Log, Warn, Mask, Escalate).
+    4.  **Track**: maintain history for recurrence detection (e.g., "Is this the
+        3rd time this happened in an hour?").
     """
     
     def __init__(
@@ -81,7 +84,7 @@ class PhaseAwareAnomalyHandler:
         state_machine: StateMachine,
         policy_loader: Optional[MissionPhasePolicyLoader] = None,
         enable_recurrence_tracking: bool = True
-    ):
+    ) -> None:
         """
         Initialize the phase-aware anomaly handler.
         
@@ -96,9 +99,9 @@ class PhaseAwareAnomalyHandler:
         self.policy_engine = MissionPhasePolicyEngine(self.policy_loader.get_policy())
         
         # Recurrence tracking
-        self.enable_recurrence_tracking = enable_recurrence_tracking
-        self.anomaly_history = []  # List of (anomaly_type, timestamp) tuples
-        self.recurrence_window = timedelta(seconds=3600)  # 1 hour default
+        self.enable_recurrence_tracking: bool = enable_recurrence_tracking
+        self.anomaly_history: List[Tuple[str, datetime]] = []  # List of (anomaly_type, timestamp) tuples
+        self.recurrence_window: timedelta = timedelta(seconds=3600)  # 1 hour default
         
         logger.info("Phase-aware anomaly handler initialized")
     
@@ -110,27 +113,24 @@ class PhaseAwareAnomalyHandler:
         anomaly_metadata: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
-        Process an anomaly with phase awareness.
-        
+        Process an anomaly with phase-aware logic and policy enforcement.
+
+        This is the core entry point for the handler. It:
+        1.  Snapshots the current mission phase.
+        2.  Updates recurrence tracking (has this happened recently?).
+        3.  Queries the Policy Engine for a decision.
+        4.  Determines if Safe Mode escalation is required.
+        5.  Constructs a full decision object for logging and downstream action.
+
         Args:
-            anomaly_type: Type of anomaly (e.g., 'power_fault', 'thermal_fault')
-            severity_score: Numeric severity from 0-1
-            confidence: Detection confidence from 0-1
-            anomaly_metadata: Optional additional info (fault_class, subsystem, etc.)
-        
+            anomaly_type (str): The classification tag (e.g., 'power_fault').
+            severity_score (float): Normalized severity [0.0 - 1.0].
+            confidence (float): Model confidence [0.0 - 1.0].
+            anomaly_metadata (Optional[Dict]): Context (e.g., source component).
+
         Returns:
-            Decision dict with:
-            {
-                'success': bool,
-                'anomaly_type': str,
-                'mission_phase': str,
-                'policy_decision': PolicyDecision (as dict),
-                'recommended_action': str,
-                'should_escalate_to_safe_mode': bool,
-                'reasoning': str,
-                'timestamp': datetime,
-                'decision_id': str (unique identifier)
-            }
+            Dict[str, Any]: A comprehensive decision object containing constraints,
+            recommended actions, and escalation flags.
         """
         if anomaly_metadata is None:
             anomaly_metadata = {}
@@ -309,7 +309,7 @@ class PhaseAwareAnomalyHandler:
             'time_since_last_seconds': time_since_last
         }
     
-    def _execute_escalation(self, decision: Dict[str, Any]):
+    def _execute_escalation(self, decision: Dict[str, Any]) -> None:
         """
         Execute escalation to SAFE_MODE.
         
@@ -360,7 +360,7 @@ class PhaseAwareAnomalyHandler:
         self, 
         decision: Dict[str, Any], 
         anomaly_metadata: Dict[str, Any]
-    ):
+    ) -> None: 
         """
         Record anomaly decision for operator feedback loop.
         
@@ -428,7 +428,7 @@ class PhaseAwareAnomalyHandler:
             )
 
     
-    def _log_decision(self, decision: Dict[str, Any]):
+    def _log_decision(self, decision: Dict[str, Any]) -> None:
         """Log the anomaly decision for audit and analysis."""
         # Structured logging
         log_entry = {
@@ -446,11 +446,7 @@ class PhaseAwareAnomalyHandler:
         
         logger.info(f"Anomaly decision: {log_entry}")
     
-    def _record_anomaly_for_reporting(self, decision: Dict[str, Any], anomaly_metadata: Dict[str, Any]):
-        """Record anomaly for reporting and analytics purposes."""
-        # This method could store anomalies in a database, send to monitoring systems, etc.
-        # For now, we'll just log that recording occurred
-        logger.debug(f"Recorded anomaly for reporting: {decision['decision_id']}")
+
     
     def _generate_decision_id(self) -> str:
         """Generate a unique decision identifier."""
@@ -473,9 +469,10 @@ class PhaseAwareAnomalyHandler:
         if phase is None:
             phase = self.state_machine.get_current_phase()
         
-        return self.policy_engine.get_phase_constraints(phase)
+        from typing import cast
+        return cast(Dict[str, Any], self.policy_engine.get_phase_constraints(phase))
     
-    def get_anomaly_history(self, anomaly_type: Optional[str] = None) -> list:
+    def get_anomaly_history(self, anomaly_type: Optional[str] = None) -> List[Tuple[str, datetime]]:
         """
         Get recent anomaly history.
         
@@ -493,12 +490,12 @@ class PhaseAwareAnomalyHandler:
                 if a_type == anomaly_type
             ]
     
-    def clear_anomaly_history(self):
+    def clear_anomaly_history(self) -> None:
         """Clear the anomaly history (e.g., for testing or reset)."""
         self.anomaly_history.clear()
         logger.info("Anomaly history cleared")
     
-    def reload_policies(self, new_config_path: Optional[str] = None):
+    def reload_policies(self, new_config_path: Optional[str] = None) -> None:
         """
         Reload policies from file.
         
@@ -554,26 +551,26 @@ class DecisionTracer:
     Collects decisions for a period and provides analysis.
     """
     
-    def __init__(self, max_decisions: int = 1000):
+    def __init__(self, max_decisions: int = 1000) -> None:
         """Initialize the decision tracer."""
-        self.max_decisions = max_decisions
-        self.decisions = []
+        self.max_decisions: int = max_decisions
+        self.decisions: List[Dict[str, Any]] = []
     
-    def add_decision(self, decision: Dict[str, Any]):
+    def add_decision(self, decision: Dict[str, Any]) -> None:
         """Record a decision."""
         self.decisions.append(decision)
         if len(self.decisions) > self.max_decisions:
             self.decisions.pop(0)
     
-    def get_decisions_for_phase(self, phase: str) -> list:
+    def get_decisions_for_phase(self, phase: str) -> List[Dict[str, Any]]:
         """Get all recorded decisions for a specific phase."""
         return [d for d in self.decisions if d.get('mission_phase') == phase]
     
-    def get_decisions_for_anomaly_type(self, anomaly_type: str) -> list:
+    def get_decisions_for_anomaly_type(self, anomaly_type: str) -> List[Dict[str, Any]]:
         """Get all recorded decisions for a specific anomaly type."""
         return [d for d in self.decisions if d.get('anomaly_type') == anomaly_type]
     
-    def get_escalations(self) -> list:
+    def get_escalations(self) -> List[Dict[str, Any]]:
         """Get all decisions that resulted in escalation."""
         return [d for d in self.decisions if d.get('should_escalate_to_safe_mode')]
     
@@ -584,13 +581,13 @@ class DecisionTracer:
         
         escalations = self.get_escalations()
         
-        phases = {}
+        phases: Dict[str, int] = {}
         for d in self.decisions:
             phase = d.get('mission_phase')
             if phase:
                 phases[phase] = phases.get(phase, 0) + 1
         
-        anomaly_types = {}
+        anomaly_types: Dict[str, int] = {}
         for d in self.decisions:
             a_type = d.get('anomaly_type')
             if a_type:

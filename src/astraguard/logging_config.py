@@ -8,10 +8,22 @@ import json
 import sys
 import os
 from datetime import datetime
-from typing import Any, Dict, Optional
+from types import TracebackType
+from typing import Any, Optional, Type
 import structlog
 from pythonjsonlogger import jsonlogger
 from core.secrets import get_secret
+from functools import lru_cache
+import asyncio
+
+# Cache secret retrieval to avoid repeated I/O
+@lru_cache(maxsize=32)
+def _cached_get_secret(key: str, default=None):
+    """Cached wrapper for get_secret to reduce I/O overhead."""
+    try:
+        return get_secret(key, default)
+    except Exception:
+        return default
 
 # ============================================================================
 # STRUCTURED LOGGING CONFIGURATION
@@ -21,7 +33,7 @@ def setup_json_logging(
     log_level: str = "INFO",
     service_name: str = "astra-guard",
     environment: str = get_secret("environment", "development")
-):
+) -> None:
     """Sets up JSON structured logging.
 
     Configures structlog and the root logger for JSON output, making it compatible with
@@ -117,7 +129,7 @@ class LogContext:
     Provides a context in which additional key-value pairs are added to each log message.
     """
     
-    def __init__(self, logger: structlog.BoundLogger, **context):
+    def __init__(self, logger: structlog.BoundLogger, **context: Any) -> None:
         """Initializes the LogContext.
 
         Args:
@@ -138,7 +150,7 @@ class LogContext:
         self.logger = self.logger.bind(**self.context)
         return self.logger
     
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type: Optional[Type[BaseException]], exc_val: Optional[BaseException], exc_tb: Optional[TracebackType]) -> None:
         """Exits the logging context.
 
         Logs an error if an exception occurred within the context.
@@ -165,8 +177,8 @@ def log_request(
     endpoint: str,
     status: int,
     duration_ms: float,
-    **extra
-):
+    **extra: Any
+) -> None:
     """Logs an HTTP request with structured data.
 
     Args:
@@ -194,8 +206,8 @@ def log_error(
     logger: structlog.BoundLogger,
     error: Exception,
     context: str,
-    **extra
-):
+    **extra: Any
+) -> None:
     """Logs an error with full context and stack trace.
 
     Args:
@@ -221,8 +233,8 @@ def log_detection(
     severity: str,
     detected_type: str,
     confidence: float,
-    **extra
-):
+    **extra: Any
+) -> None:
     """Logs an anomaly/detection event.
 
     Args:
@@ -250,8 +262,8 @@ def log_circuit_breaker_event(
     breaker_name: str,
     state: str,
     reason: Optional[str] = None,
-    **extra
-):
+    **extra: Any
+) -> None:
     """Logs a circuit breaker state change event.
 
     Args:
@@ -281,8 +293,8 @@ def log_retry_event(
     attempt: int,
     status: str,
     delay_ms: Optional[float] = None,
-    **extra
-):
+    **extra: Any
+) -> None:
     """Logs a retry attempt.
 
     Args:
@@ -313,8 +325,8 @@ def log_recovery_action(
     status: str,
     component: str,
     duration_ms: Optional[float] = None,
-    **extra
-):
+    **extra: Any
+) -> None:
     """Logs a recovery/remediation action.
 
     Args:
@@ -344,8 +356,8 @@ def log_performance_metric(
     value: float,
     unit: str = "ms",
     threshold: Optional[float] = None,
-    **extra
-):
+    **extra: Any
+) -> None:
     """Logs a performance metric.
 
     Args:
@@ -365,7 +377,7 @@ def log_performance_metric(
         log_level = "warning"
     else: 
         log_level = "info"
-    
+
     getattr(logger, log_level)(
         "performance_metric",
         metric=metric_name,
@@ -378,10 +390,76 @@ def log_performance_metric(
 
 
 # ============================================================================
+# ASYNC LOGGING FUNCTIONS
+# ============================================================================
+
+async def async_log_request(
+    logger: structlog.BoundLogger,
+    method: str,
+    endpoint: str,
+    status: int,
+    duration_ms: float,
+    **extra
+):
+    """
+    Async version of log_request to avoid blocking in async contexts.
+
+    Args:
+        logger: Structlog logger instance
+        method: HTTP method
+        endpoint: Request endpoint
+        status: HTTP status code
+        duration_ms: Request duration in milliseconds
+        **extra: Additional context fields
+    """
+    await asyncio.to_thread(
+        log_request, logger, method, endpoint, status, duration_ms, **extra
+    )
+
+
+async def async_log_error(
+    logger: structlog.BoundLogger,
+    error: Exception,
+    context: str,
+    **extra
+):
+    """
+    Async version of log_error.
+
+    Args:
+        logger: Structlog logger instance
+        error: Exception instance
+        context: Context description
+        **extra: Additional context fields
+    """
+    await asyncio.to_thread(log_error, logger, error, context, **extra)
+
+
+async def async_log_detection(
+    logger: structlog.BoundLogger,
+    severity: str,
+    detected_type: str,
+    confidence: float,
+    **extra
+):
+    """
+    Async version of log_detection.
+
+    Args:
+        logger: Structlog logger instance
+        severity: Severity level
+        detected_type: Type of anomaly detected
+        confidence: Confidence score
+        **extra: Additional context fields
+    """
+    await asyncio.to_thread(log_detection, logger, severity, detected_type, confidence, **extra)
+
+
+# ============================================================================
 # FILTERING AND UTILITIES
 # ============================================================================
 
-def set_log_level(level: str):
+def set_log_level(level: str) -> None:
     """Changes the logging level at runtime.
 
     Args:
@@ -393,7 +471,7 @@ def set_log_level(level: str):
     logging.getLogger().setLevel(getattr(logging, level))
 
 
-def clear_context():
+def clear_context() -> None:
     """Clears all context variables.
 
     Returns:
@@ -402,7 +480,7 @@ def clear_context():
     structlog.contextvars.clear_contextvars()
 
 
-def bind_context(**context):
+def bind_context(**context: Any) -> None:
     """Adds context variables to all future log entries.
 
     Args:
@@ -414,7 +492,7 @@ def bind_context(**context):
     structlog.contextvars.bind_contextvars(**context)
 
 
-def unbind_context(*keys):
+def unbind_context(*keys: str) -> None:
     """Removes context variables.
 
     Args:
@@ -432,7 +510,7 @@ def unbind_context(*keys):
 
 # Initialize on import with error handling
 try:
-    enable_json = get_secret("enable_json_logging", False)
+    enable_json = _cached_get_secret("enable_json_logging", False)
     if enable_json:
         setup_json_logging()
 except (KeyError, ValueError, Exception) as e:
