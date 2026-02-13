@@ -6,7 +6,9 @@ It securely imports the main `app` instance from `api.service`, handling potenti
 import errors gracefully with detailed logging for debugging deployment issues.
 """
 import logging
-logger=logging.getLogger(__name__)
+from typing import List
+
+logger: logging.Logger = logging.getLogger(__name__)
 try:
     from api.service import app
 except ModuleNotFoundError as e:
@@ -24,4 +26,4 @@ except ImportError as e:
     )
     raise
 
-__all__=["app"]
+__all__: List[str] = ["app"]
