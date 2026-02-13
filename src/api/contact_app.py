@@ -10,6 +10,9 @@ from typing import List
 
 from api.contact import router as contact_router
 
+logger = logging.getLogger(__name__)
+
+
 
 logger: logging.Logger = logging.getLogger(__name__)
 app: FastAPI = FastAPI(title="AstraGuard Contact API (dev)")
