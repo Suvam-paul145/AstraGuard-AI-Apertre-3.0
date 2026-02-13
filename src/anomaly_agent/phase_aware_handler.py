@@ -13,7 +13,7 @@ depending on the current mission phase.
 """
 
 import logging
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional, Tuple, List, Union
 from dataclasses import asdict
 from datetime import datetime, timedelta
 import json
@@ -60,7 +60,7 @@ class PhaseAwareAnomalyHandler:
         state_machine: StateMachine,
         policy_loader: Optional[MissionPhasePolicyLoader] = None,
         enable_recurrence_tracking: bool = True
-    ):
+    ) -> None:
         """
         Initialize the phase-aware anomaly handler.
         
@@ -74,12 +74,10 @@ class PhaseAwareAnomalyHandler:
         self.policy_loader = policy_loader or MissionPhasePolicyLoader()
         self.policy_engine = MissionPhasePolicyEngine(self.policy_loader.get_policy())
         
-        # Recurrence tracking - optimized data structures
-        self.enable_recurrence_tracking = enable_recurrence_tracking
-        self.anomaly_history = []  # Keep for backward compatibility
-        self._anomaly_counts = defaultdict(int)  # Fast count lookups by type
-        self._anomaly_timestamps = defaultdict(list)  # Timestamps by type for window queries
-        self.recurrence_window = timedelta(seconds=3600)  # 1 hour default
+        # Recurrence tracking
+        self.enable_recurrence_tracking: bool = enable_recurrence_tracking
+        self.anomaly_history: List[Tuple[str, datetime]] = []  # List of (anomaly_type, timestamp) tuples
+        self.recurrence_window: timedelta = timedelta(seconds=3600)  # 1 hour default
         
         logger.info("Phase-aware anomaly handler initialized")
 
@@ -242,35 +240,7 @@ class PhaseAwareAnomalyHandler:
             'time_since_last_seconds': time_since_last
         }
     
-    def _cleanup_old_entries(self, now: datetime):
-        """
-        Clean up old entries from history and optimized data structures.
-        Called periodically to prevent unbounded memory growth.
-        """
-        cutoff = now - timedelta(hours=24)
-        
-        # Clean main history list
-        self.anomaly_history = [
-            (a_type, ts) for a_type, ts in self.anomaly_history
-            if ts >= cutoff
-        ]
-        
-        # Clean optimized data structures
-        for anomaly_type in list(self._anomaly_timestamps.keys()):
-            # Filter timestamps within window
-            self._anomaly_timestamps[anomaly_type] = [
-                ts for ts in self._anomaly_timestamps[anomaly_type]
-                if ts >= cutoff
-            ]
-            # Update count to match filtered timestamps
-            self._anomaly_counts[anomaly_type] = len(self._anomaly_timestamps[anomaly_type])
-            # Remove empty entries
-            if not self._anomaly_timestamps[anomaly_type]:
-                del self._anomaly_timestamps[anomaly_type]
-                del self._anomaly_counts[anomaly_type]
-
-    
-    def _execute_escalation(self, decision: Dict[str, Any]):
+    def _execute_escalation(self, decision: Dict[str, Any]) -> None:
         """
         Execute escalation to SAFE_MODE.
         
@@ -314,7 +284,7 @@ class PhaseAwareAnomalyHandler:
         self, 
         decision: Dict[str, Any], 
         anomaly_metadata: Dict[str, Any]
-    ):
+    ) -> None: 
         """
         Record anomaly decision for operator feedback loop.
         
@@ -354,6 +324,26 @@ class PhaseAwareAnomalyHandler:
         except Exception as e:
             logger.error(f"Failed to record anomaly for reporting: {e}")
     
+    def _log_decision(self, decision: Dict[str, Any]) -> None:
+        """Log the anomaly decision for audit and analysis."""
+        # Structured logging
+        log_entry = {
+            'timestamp': decision['timestamp'].isoformat(),
+            'decision_id': decision['decision_id'],
+            'anomaly_type': decision['anomaly_type'],
+            'severity': decision['severity_score'],
+            'confidence': decision['detection_confidence'],
+            'mission_phase': decision['mission_phase'],
+            'recommended_action': decision['recommended_action'],
+            'escalation': decision['should_escalate_to_safe_mode'],
+            'recurrence_count': decision['recurrence_info']['count'],
+            'reasoning': decision['reasoning']
+        }
+        
+        logger.info(f"Anomaly decision: {log_entry}")
+    
+
+    
     def _generate_decision_id(self) -> str:
         """Generate a unique decision identifier using UUID for better performance."""
         timestamp = int(datetime.now().timestamp() * 1000)
@@ -374,9 +364,10 @@ class PhaseAwareAnomalyHandler:
         if phase is None:
             phase = self.state_machine.get_current_phase()
         
-        return self.policy_engine.get_phase_constraints(phase)
+        from typing import cast
+        return cast(Dict[str, Any], self.policy_engine.get_phase_constraints(phase))
     
-    def get_anomaly_history(self, anomaly_type: Optional[str] = None) -> list:
+    def get_anomaly_history(self, anomaly_type: Optional[str] = None) -> List[Tuple[str, datetime]]:
         """
         Get recent anomaly history.
         
@@ -394,7 +385,7 @@ class PhaseAwareAnomalyHandler:
                 if a_type == anomaly_type
             ]
     
-    def clear_anomaly_history(self):
+    def clear_anomaly_history(self) -> None:
         """Clear the anomaly history (e.g., for testing or reset)."""
         self.anomaly_history.clear()
         self._anomaly_counts.clear()
@@ -402,7 +393,7 @@ class PhaseAwareAnomalyHandler:
         logger.info("Anomaly history cleared")
 
     
-    def reload_policies(self, new_config_path: Optional[str] = None):
+    def reload_policies(self, new_config_path: Optional[str] = None) -> None:
         """
         Reload policies from file.
         
@@ -426,25 +417,25 @@ class DecisionTracer:
     Uses deque for O(1) append and automatic size management.
     """
     
-    def __init__(self, max_decisions: int = 1000):
+    def __init__(self, max_decisions: int = 1000) -> None:
         """Initialize the decision tracer."""
-        self.max_decisions = max_decisions
-        self.decisions = deque(maxlen=max_decisions)
+        self.max_decisions: int = max_decisions
+        self.decisions: List[Dict[str, Any]] = []
     
-    def add_decision(self, decision: Dict[str, Any]):
+    def add_decision(self, decision: Dict[str, Any]) -> None:
         """Record a decision."""
         self.decisions.append(decision)
 
     
-    def get_decisions_for_phase(self, phase: str) -> list:
+    def get_decisions_for_phase(self, phase: str) -> List[Dict[str, Any]]:
         """Get all recorded decisions for a specific phase."""
         return [d for d in self.decisions if d.get('mission_phase') == phase]
     
-    def get_decisions_for_anomaly_type(self, anomaly_type: str) -> list:
+    def get_decisions_for_anomaly_type(self, anomaly_type: str) -> List[Dict[str, Any]]:
         """Get all recorded decisions for a specific anomaly type."""
         return [d for d in self.decisions if d.get('anomaly_type') == anomaly_type]
     
-    def get_escalations(self) -> list:
+    def get_escalations(self) -> List[Dict[str, Any]]:
         """Get all decisions that resulted in escalation."""
         return [d for d in self.decisions if d.get('should_escalate_to_safe_mode')]
 
@@ -456,13 +447,13 @@ class DecisionTracer:
         
         escalations = self.get_escalations()
         
-        phases = {}
+        phases: Dict[str, int] = {}
         for d in self.decisions:
             phase = d.get('mission_phase')
             if phase:
                 phases[phase] = phases.get(phase, 0) + 1
         
-        anomaly_types = {}
+        anomaly_types: Dict[str, int] = {}
         for d in self.decisions:
             a_type = d.get('anomaly_type')
             if a_type:

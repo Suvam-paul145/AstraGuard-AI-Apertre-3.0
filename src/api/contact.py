@@ -12,8 +12,7 @@ import re
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional, List
-from collections import deque
+from typing import Optional, List, Any, Union
 from fastapi import APIRouter, HTTPException, Request, Depends, Query
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from fastapi.responses import JSONResponse
@@ -37,11 +36,11 @@ except ImportError:
 
 
 if AUTH_AVAILABLE:
-    async def get_admin_user(user = Depends(require_admin)):
+    async def get_admin_user(user: Any = Depends(require_admin)) -> Any:
         """Dynamic admin dependency when auth is available"""
         return user
 else:
-    async def get_admin_user():
+    async def get_admin_user(user: Any = None) -> Any:
         """No-op admin dependency when auth is unavailable"""
         return None
 
@@ -72,18 +71,18 @@ class ContactSubmission(BaseModel):
     message: str = Field(..., min_length=10, max_length=5000)
     website: Optional[str] = Field(None, description="Honeypot field")
     
-    @field_validator('name', 'subject', 'message')
-    @classmethod
-    def sanitize_text(cls, v):
+    @validator('name', 'subject', 'message')
+    def sanitize_text(cls, v: str) -> str:
+
         """Remove dangerous characters to prevent XSS"""
         if v:
             # Remove HTML tags and dangerous characters
             v = re.sub(r'[<>"\'&]', '', v)
         return v
     
-    @field_validator('email')
-    @classmethod
-    def normalize_email(cls, v):
+    @validator('email')
+    def normalize_email(cls, v: str) -> str:
+
         """Normalize email to lowercase"""
         return v.lower() if v else v
 
@@ -117,29 +116,9 @@ class SubmissionsResponse(BaseModel):
     submissions: List[SubmissionRecord]
 
 
-# Database connection pool
-_db_pool: Optional[aiosqlite.Connection] = None
-
-async def get_db() -> aiosqlite.Connection:
-    """Get or create database connection"""
-    global _db_pool
-    if _db_pool is None:
-        DATA_DIR.mkdir(exist_ok=True)
-        _db_pool = await aiosqlite.connect(DB_PATH)
-        _db_pool.row_factory = aiosqlite.Row
-    return _db_pool
-
-
-async def init_database():
-    """
-    Initialize SQLite database with required tables and indices.
-    
-    Creates the 'contact_submissions' table if it doesn't exist, along with
-    indices on 'submitted_at' and 'status' for query performance.
-    
-    The database file is created at `data/contact_submissions.db` relative to the
-    application root.
-    """
+# Database initialization
+def init_database() -> None:
+    """Initialize SQLite database with contact_submissions table"""
     DATA_DIR.mkdir(exist_ok=True)
     
     db = await aiosqlite.connect(DB_PATH)
@@ -189,9 +168,9 @@ _init_db_sync()
 
 # Rate limiting helper - OPTIMIZED with deque
 class InMemoryRateLimiter:
-    """Optimized in-memory rate limiter using deque for O(1) operations"""
-    def __init__(self):
-        self.requests = {}
+    """Simple in-memory rate limiter when Redis is not available"""
+    def __init__(self) -> None:
+        self.requests: dict[str, List[datetime]] = {}
     
     def is_allowed(self, key: str, limit: int, window: int) -> bool:
         """Check if request is allowed under rate limit - O(1) complexity"""
@@ -252,22 +231,11 @@ async def save_submission(
     submission: ContactSubmission,
     ip_address: str,
     user_agent: str
-) -> int:
-    """
-    Persist a contact form submission to the database.
+) -> Optional[int]:
+    """Save submission to database and return submission ID"""
 
-    Args:
-        submission (ContactSubmission): The validated submission data (name, email, message, etc.).
-        ip_address (str): Client IP address for auditing and spam control.
-        user_agent (str): Client User-Agent string.
-
-    Returns:
-        int: The primary key ID of the newly created submission record.
-
-    Raises:
-        aiosqlite.Error: If a database error occurs during insertion.
-    """
-    db = await get_db()
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
     
     cursor = await db.execute("""
         INSERT INTO contact_submissions 
@@ -289,7 +257,8 @@ async def save_submission(
     return submission_id
 
 
-async def log_notification(submission: ContactSubmission, submission_id: int):
+def log_notification(submission: ContactSubmission, submission_id: Optional[int]) -> None:
+
     """Log notification to file (fallback when email is not configured)"""
     DATA_DIR.mkdir(exist_ok=True)
     
@@ -306,7 +275,8 @@ async def log_notification(submission: ContactSubmission, submission_id: int):
         await f.write(json.dumps(log_entry) + "\n")
 
 
-async def send_email_notification(submission: ContactSubmission, submission_id: int):
+def send_email_notification(submission: ContactSubmission, submission_id: Optional[int]) -> None:
+
     """Send email notification (placeholder for SendGrid integration)"""
     # TODO: Implement SendGrid integration when SENDGRID_API_KEY is set
     if SENDGRID_API_KEY:
@@ -345,7 +315,7 @@ async def send_email_notification(submission: ContactSubmission, submission_id: 
 async def submit_contact_form(
     submission: ContactSubmission,
     request: Request
-):
+) -> Union[JSONResponse, ContactResponse]:
     """
     Submit a contact form
     
@@ -433,9 +403,10 @@ async def submit_contact_form(
 async def get_submissions(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
-    status_filter: Optional[str] = Query(None, pattern="^(pending|resolved|spam)$"),
-    current_user = Depends(get_admin_user)
-):
+    status_filter: Optional[str] = Query(None, regex="^(pending|resolved|spam)$"),
+    current_user: Any = Depends(get_admin_user)
+) -> SubmissionsResponse:
+
     """
     Get contact form submissions (Admin only)
     
@@ -502,9 +473,10 @@ async def get_submissions(
 @router.patch("/submissions/{submission_id}/status")
 async def update_submission_status(
     submission_id: int,
-    status: str = Query(..., pattern="^(pending|resolved|spam)$"),
-    current_user = Depends(get_admin_user)
-):
+    status: str = Query(..., regex="^(pending|resolved|spam)$"),
+    current_user: Any = Depends(get_admin_user)
+) -> dict[str, Any]:
+
     """
     Update submission status (Admin only)
     
@@ -530,7 +502,7 @@ async def update_submission_status(
 
 # Health check endpoint
 @router.get("/health")
-async def contact_health():
+async def contact_health() -> dict[str, Any]:
     """Check contact form service health"""
     try:
         # Check database
