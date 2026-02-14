@@ -3,7 +3,7 @@ import os
 import pickle
 import logging
 import asyncio
-from typing import Dict, Tuple, Optional, List, Any
+from typing import Any, Dict, Tuple, Optional, cast
 
 # Import centralized error handling
 from core.error_handling import (
@@ -33,7 +33,7 @@ import time
 logger: logging.Logger = logging.getLogger(__name__)
 
 MODEL_PATH: str = os.path.join(os.path.dirname(__file__), "anomaly_if.pkl")
-_MODEL: Optional[Any] = None  # ML model type depends on sklearn
+_MODEL: Optional[Any] = None
 _MODEL_LOADED: bool = False
 _USING_HEURISTIC_MODE: bool = False
 
@@ -238,7 +238,9 @@ async def _load_model_with_retry() -> bool:
     Model loading with retry wrapper.
     Retries on transient failures before circuit breaker engagement.
     """
-    return await _load_model_impl()  # type: ignore[no-any-return]
+    # Cast needed because @async_timeout decorator is untyped
+    result: bool = cast(bool, await _load_model_impl())
+    return result
 
 
 async def load_model() -> bool:
@@ -261,7 +263,8 @@ async def load_model() -> bool:
             _load_model_with_retry,  # Retry wrapper
             fallback=_load_model_fallback,
         )
-        return result  # type: ignore[no-any-return]
+        # Cast needed because circuit breaker call() returns Any
+        return cast(bool, result)
 
     except CircuitOpenError as e:
         logger.error(
@@ -318,7 +321,6 @@ async def load_model() -> bool:
         return False
 
 
-
 def _detect_anomaly_heuristic(data: Dict[str, Any]) -> Tuple[bool, float]:
     """
     Perform rule-based anomaly detection as a fallback mechanism.
@@ -333,7 +335,7 @@ def _detect_anomaly_heuristic(data: Dict[str, Any]) -> Tuple[bool, float]:
     - Deterministic: Always returns a result given valid input.
 
     Args:
-        data (Dict): Raw telemetry dictionary.
+        data (Dict[str, Any]): Raw telemetry dictionary.
 
     Returns:
         Tuple[bool, float]: (is_anomalous, severity_score)
@@ -350,7 +352,7 @@ def _detect_anomaly_heuristic(data: Dict[str, Any]) -> Tuple[bool, float]:
         )
         return False, 0.0
 
-    score = 0.0
+    score: float = 0.0
 
     # Conservative thresholds for heuristic mode
     try:
@@ -394,11 +396,11 @@ def _detect_anomaly_heuristic(data: Dict[str, Any]) -> Tuple[bool, float]:
     score += random.uniform(0, 0.1)
 
     # Conservative threshold: be more sensitive to potential issues
-    is_anomalous = score > 0.5  # Lowered from 0.6 for more sensitivity
+    is_anomalous: bool = score > 0.5  # Lowered from 0.6 for more sensitivity
     return is_anomalous, min(score, 1.0)  # Cap at 1.0
 
 
-@async_timeout(seconds=10.0, operation_name="anomaly_detection")  # type: ignore[misc]
+@async_timeout(seconds=10.0, operation_name="anomaly_detection")
 async def detect_anomaly(data: Dict[str, Any]) -> Tuple[bool, float]:
     """
     Detect anomaly in telemetry data with resource-aware execution.
