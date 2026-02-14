@@ -7,11 +7,12 @@ import errors gracefully with detailed logging for debugging deployment issues.
 """
 import logging
 import sys
+from typing import List, Tuple
 
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
 # Track import errors for better debugging
-_import_errors = []
+_import_errors: List[Tuple[str, str]] = []
 
 
 def _log_import_error(error: Exception, error_type: str) -> None:
@@ -66,7 +67,7 @@ except Exception as e:
     raise
 
 
-def get_import_errors() -> list:
+def get_import_errors() -> List[Tuple[str, str]]:
     """Return list of import errors that occurred during module load."""
     return _import_errors.copy()
 
