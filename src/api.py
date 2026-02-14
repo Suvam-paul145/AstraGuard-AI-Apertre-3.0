@@ -29,9 +29,8 @@ except AttributeError as e:
     # Handle case where module exists but doesn't have 'app' attribute
     logger.critical(
         "Module 'api.service' found but 'app' attribute is missing. "
-        "Verify that api.service module exports 'app' correctly.",
-        error_type="AttributeError",
-        error_message=str(e),
+        f"Verify that api.service module exports 'app' correctly. Error: {e} | "
+        f"Python version: {sys.version}",
         exc_info=True,
     )
     _import_errors.append(("AttributeError", str(e)))
@@ -39,10 +38,9 @@ except AttributeError as e:
 except Exception as e:
     # Catch-all for unexpected errors during import
     logger.critical(
-        "Unexpected error during import of 'api.service.app'. "
-        "This may indicate a configuration or environment issue.",
-        error_type=type(e).__name__,
-        error_message=str(e),
+        f"Unexpected error during import of 'api.service.app': {type(e).__name__} - {e} | "
+        f"This may indicate a configuration or environment issue. | "
+        f"Python version: {sys.version}",
         exc_info=True,
     )
     _import_errors.append((type(e).__name__, str(e)))
