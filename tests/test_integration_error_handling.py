@@ -18,6 +18,9 @@ from state_machine.state_engine import StateMachine, MissionPhase
 from state_machine.mission_phase_policy_engine import MissionPhasePolicyEngine
 from anomaly_agent.phase_aware_handler import PhaseAwareAnomalyHandler
 from config.mission_phase_policy_loader import MissionPhasePolicyLoader
+
+# Mark integration error handling tests as slow
+pytestmark = [pytest.mark.slow, pytest.mark.timeout(45)]
 from anomaly.anomaly_detector import detect_anomaly
 
 

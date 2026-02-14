@@ -18,6 +18,9 @@ from astraguard.swarm.models import (
     SwarmConfig,
 )
 from astraguard.swarm.serializer import SwarmSerializer
+
+# Mark swarm config integration tests as slow
+pytestmark = [pytest.mark.slow, pytest.mark.timeout(45)]
 from astraguard.swarm.types import SwarmMessage, QoSLevel
 from astraguard.swarm.bus import SwarmMessageBus
 

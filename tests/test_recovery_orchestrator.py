@@ -18,6 +18,9 @@ from backend.recovery_orchestrator import (
     RecoveryOrchestrator,
     RecoveryConfig,
     RecoveryAction,
+
+# Mark recovery orchestrator tests as slow
+pytestmark = [pytest.mark.slow, pytest.mark.timeout(45)]
     RecoveryMetrics,
 )
 
