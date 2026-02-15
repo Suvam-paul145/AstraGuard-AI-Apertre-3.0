@@ -1128,7 +1128,7 @@ class TestErrorHandling:
         
         # With max_history=0, data older than today should be removed
         # But newly added data should still be there initially
-        assert len(generator.anomalies) >= 0  # Implementation dependent
+        assert len(generator.anomalies) == 1
 
     def test_resolve_anomaly_multiple_times(self, generator):
         """Test resolving the same anomaly multiple times."""
