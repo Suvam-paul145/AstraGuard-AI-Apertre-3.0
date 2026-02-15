@@ -175,8 +175,6 @@ def setup_auto_instrumentation():
         )
 
 
-
-
 def instrument_fastapi(app: Any) -> None:
     """
     Instrument FastAPI application with OpenTelemetry
