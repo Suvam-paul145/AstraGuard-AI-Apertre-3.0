@@ -204,9 +204,111 @@ def span_anomaly_detection(data_size: int, model_name: str = "default") -> Gener
             raise
 
 
-# ... [All other context managers remain exactly the same, only generic exceptions in places replaced with RuntimeError + Exception] ...
+@contextmanager
+def span_model_inference(model_type: str, input_shape: Any) -> Generator[Any, None, None]:
+    """
+    Trace ML model inference operations
+    
+    Args:
+        model_type: Type of model (e.g., 'classifier', 'detector')
+        input_shape: Shape of input data
+    """
+    tracer = get_tracer()
+    with tracer.start_as_current_span("model_inference") as span_obj:
+        span_obj.set_attribute("model.type", model_type)
+        span_obj.set_attribute("input.shape", str(input_shape))
+        yield span_obj
 
+
+@contextmanager
+def span_external_call(service: str, operation: str, timeout: Optional[float] = None) -> Generator[Any, None, None]:
+    """
+    Trace external service calls (API, database, etc.)
+    
+    Args:
+        service: External service name
+        operation: Operation being performed
+        timeout: Operation timeout in seconds
+    """
+    tracer = get_tracer()
+    with tracer.start_as_current_span("external_call") as span_obj:
+        span_obj.set_attribute("service", service)
+        span_obj.set_attribute("operation", operation)
+        if timeout:
+            span_obj.set_attribute("timeout", timeout)
+        yield span_obj
+
+
+@contextmanager
+def span_database_query(query_type: str, table: Optional[str] = None) -> Generator[Any, None, None]:
+    """
+    Trace database query operations
+    
+    Args:
+        query_type: Type of query (SELECT, INSERT, UPDATE, etc.)
+        table: Table name (optional)
+    """
+    tracer = get_tracer()
+    with tracer.start_as_current_span("database_query") as span_obj:
+        span_obj.set_attribute("query.type", query_type)
+        if table:
+            span_obj.set_attribute("table", table)
+        yield span_obj
+
+
+@contextmanager
+def span_cache_operation(operation: str, key: str, cache_type: str = "redis") -> Generator[Any, None, None]:
+    """
+    Trace cache operations
+    
+    Args:
+        operation: Cache operation (get, set, delete)
+        key: Cache key
+        cache_type: Type of cache (default: redis)
+    """
+    tracer = get_tracer()
+    with tracer.start_as_current_span("cache_operation") as span_obj:
+        span_obj.set_attribute("cache.operation", operation)
+        span_obj.set_attribute("cache.key", key)
+        span_obj.set_attribute("cache.type", cache_type)
+        yield span_obj
+
+
+@contextmanager
+def span_circuit_breaker(name: str, operation: str) -> Generator[Any, None, None]:
+    """
+    Trace circuit breaker operations
+    
+    Args:
+        name: Name of the circuit breaker
+        operation: Operation type (call, trip, reset, half-open)
+    """
+    tracer = get_tracer()
+    with tracer.start_as_current_span("circuit_breaker") as span_obj:
+        span_obj.set_attribute("breaker.name", name)
+        span_obj.set_attribute("breaker.operation", operation)
+        yield span_obj
+
+
+@contextmanager
+def span_retry(endpoint: str, attempt: int) -> Generator[Any, None, None]:
+    """
+    Trace retry attempts
+    
+    Args:
+        endpoint: Endpoint being retried
+        attempt: Retry attempt number
+    """
+    tracer = get_tracer()
+    with tracer.start_as_current_span("retry") as span_obj:
+        span_obj.set_attribute("endpoint", endpoint)
+        span_obj.set_attribute("attempt", attempt)
+        yield span_obj
+
+
+# ============================================================================
 # TRACING SHUTDOWN
+# ============================================================================
 
 def shutdown_tracing() -> None:
     """
