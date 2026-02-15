@@ -12,8 +12,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-logger = logging.getLogger(__name__)
-
 
 class FaultState(str, Enum):
     """Fault states for ground truth."""
@@ -182,43 +180,42 @@ class AccuracyCollector:
             # Per-fault-type breakdown
             by_fault = self._calculate_per_fault_stats()
 
-        # Confidence statistics with error handling
-        confidences = [c.confidence for c in self.agent_classifications]
+            # Confidence statistics with error handling
+            confidences = [c.confidence for c in self.agent_classifications]
 
-        try:
-            if confidences:
-                confidence_mean = float(np.mean(confidences))
-                confidence_std = float(np.std(confidences))
-                
-                # Check for invalid values
-                if np.isnan(confidence_mean) or np.isinf(confidence_mean):
-                    logger.warning(
-                        "Invalid confidence mean calculated (NaN or Inf), defaulting to 0.0",
-                        extra={"confidences_sample": confidences[:5]}
-                    )
+            try:
+                if confidences:
+                    confidence_mean = float(np.mean(confidences))
+                    confidence_std = float(np.std(confidences))
+                    
+                    # Check for invalid values
+                    if np.isnan(confidence_mean) or np.isinf(confidence_mean):
+                        logger.warning(
+                            "Invalid confidence mean calculated (NaN or Inf), defaulting to 0.0",
+                            extra={"confidences_sample": confidences[:5]}
+                        )
+                        confidence_mean = 0.0
+                    
+                    if np.isnan(confidence_std) or np.isinf(confidence_std):
+                        logger.warning(
+                            "Invalid confidence std calculated (NaN or Inf), defaulting to 0.0",
+                            extra={"confidences_sample": confidences[:5]}
+                        )
+                        confidence_std = 0.0
+                else:
                     confidence_mean = 0.0
-                
-                if np.isnan(confidence_std) or np.isinf(confidence_std):
-                    logger.warning(
-                        "Invalid confidence std calculated (NaN or Inf), defaulting to 0.0",
-                        extra={"confidences_sample": confidences[:5]}
-                    )
                     confidence_std = 0.0
-            else:
+                    
+            except (ValueError, TypeError) as e:
+                logger.error(
+                    f"Failed to calculate confidence statistics: {e}",
+                    extra={
+                        "confidences_count": len(confidences),
+                        "operation": "accuracy_stats"
+                    }
+                )
                 confidence_mean = 0.0
                 confidence_std = 0.0
-                
-        except (ValueError, TypeError) as e:
-            logger.error(
-                f"Failed to calculate confidence statistics: {e}",
-                extra={
-                    "confidences_count": len(confidences),
-                    "operation": "accuracy_stats"
-                }
-            )
-            confidence_mean = 0.0
-            confidence_std = 0.0
-
 
             return {
                 "total_classifications": total,
@@ -235,90 +232,87 @@ class AccuracyCollector:
     def _calculate_per_fault_stats(self) -> Dict[str, Dict[str, Any]]:
         """
         Calculate precision, recall, F1 per fault type.
+        Optimized to iterate through classifications only once.
         """
         try:
+            # Collect all fault types and build stats in a single pass
             fault_types = set()
+            stats_data = defaultdict(lambda: {
+                'tp': 0, 'fp': 0, 'fn': 0,
+                'predictions': [], 'confidences': []
+            })
+
+            # First pass: collect predicted fault types and build basic stats
             for c in self.agent_classifications:
                 if c.predicted_fault:
                     fault_types.add(c.predicted_fault)
+                    
+                predicted_type = c.predicted_fault
+                if predicted_type and c.is_correct:
+                    stats_data[predicted_type]['tp'] += 1
+                elif predicted_type and not c.is_correct:
+                    stats_data[predicted_type]['fp'] += 1
+                    
+                if predicted_type:
+                    stats_data[predicted_type]['predictions'].append(c)
+                    stats_data[predicted_type]['confidences'].append(c.confidence)
+                    
+                # Handle false negatives
+                if not c.is_correct:
+                    actual_fault = self._find_ground_truth_fault(
+                        c.satellite_id, c.timestamp_s
+                    )
+                    if actual_fault and actual_fault != predicted_type:
+                        fault_types.add(actual_fault)
+                        stats_data[actual_fault]['fn'] += 1
+            
+            # Add ground truth fault types
             for e in self.ground_truth_events:
                 if e.expected_fault_type:
                     fault_types.add(e.expected_fault_type)
 
+            # Build final stats dictionary
             stats = {}
-
             for fault_type in sorted(fault_types):
-                tp = sum(
-                    1
-                    for c in self.agent_classifications
-                    if c.predicted_fault == fault_type and c.is_correct
-                )
-
-                fp = sum(
-                    1
-                    for c in self.agent_classifications
-                    if c.predicted_fault == fault_type and not c.is_correct
-                )
-
-                fn = sum(
-                    1
-                    for c in self.agent_classifications
-                    if c.predicted_fault != fault_type
-                    and c.is_correct is False
-                    and self._find_ground_truth_fault(
-                        c.satellite_id, c.timestamp_s
-                    )
-                    == fault_type
-                )
-
-            predictions = [
-                c for c in self.agent_classifications if c.predicted_fault == fault_type
-            ]
-
-            # Calculate average confidence with error handling
-            try:
-                avg_confidence = (
-                    float(np.mean([c.confidence for c in predictions]))
-                    if predictions
+                data = stats_data[fault_type]
+                tp = data['tp']
+                fp = data['fp']
+                fn = data['fn']
+                
+                precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+                recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+                f1 = (
+                    2 * (precision * recall) / (precision + recall)
+                    if (precision + recall) > 0
                     else 0.0
                 )
-                
-                # Validate result
-                if np.isnan(avg_confidence) or np.isinf(avg_confidence):
+
+                # Calculate average confidence with error handling
+                try:
+                    confidences = data['confidences']
+                    avg_confidence = (
+                        float(np.mean(confidences))
+                        if confidences
+                        else 0.0
+                    )
+                    
+                    # Validate result
+                    if np.isnan(avg_confidence) or np.isinf(avg_confidence):
+                        logger.warning(
+                            f"Invalid average confidence for fault type '{fault_type}', using 0.0",
+                            extra={
+                                "fault_type": fault_type,
+                                "predictions_count": len(data['predictions'])
+                            }
+                        )
+                        avg_confidence = 0.0
+                        
+                except (ValueError, TypeError) as e:
                     logger.warning(
-                        f"Invalid average confidence for fault type '{fault_type}', using 0.0",
-                        extra={
-                            "fault_type": fault_type,
-                            "predictions_count": len(predictions)
-                        }
+                        f"Failed to calculate average confidence for '{fault_type}': {e}",
+                        extra={"fault_type": fault_type, "predictions_count": len(data['predictions'])}
                     )
                     avg_confidence = 0.0
-                    
-            except (ValueError, TypeError) as e:
-                logger.warning(
-                    f"Failed to calculate average confidence for '{fault_type}': {e}",
-                    extra={"fault_type": fault_type, "predictions_count": len(predictions)}
-                )
-                avg_confidence = 0.0
-
-            stats[fault_type] = {
-                "precision": precision,
-                "recall": recall,
-                "f1": f1,
-                "true_positives": tp,
-                "false_positives": fp,
-                "false_negatives": fn,
-                "total_predictions": len(predictions),
-                "correct_predictions": tp,
-                "avg_confidence": avg_confidence,
-            }
-
-
-                predictions = [
-                    c
-                    for c in self.agent_classifications
-                    if c.predicted_fault == fault_type
-                ]
 
                 stats[fault_type] = {
                     "precision": precision,
@@ -327,13 +321,9 @@ class AccuracyCollector:
                     "true_positives": tp,
                     "false_positives": fp,
                     "false_negatives": fn,
-                    "total_predictions": len(predictions),
+                    "total_predictions": len(data['predictions']),
                     "correct_predictions": tp,
-                    "avg_confidence": (
-                        float(np.mean([c.confidence for c in predictions]))
-                        if predictions
-                        else 0.0
-                    ),
+                    "avg_confidence": avg_confidence,
                 }
 
             return stats
@@ -385,43 +375,66 @@ class AccuracyCollector:
     def get_stats_by_satellite(self) -> Dict[str, Dict[str, Any]]:
         """
         Calculate accuracy statistics per satellite.
+        Optimized to iterate through classifications only once.
         """
         try:
-            by_satellite = defaultdict(list)
-
-            # Calculate average confidence with error handling
-            try:
-                avg_confidence = (
-                    float(np.mean([c.confidence for c in classifications]))
-                    if classifications
-                    else 0.0
-                )
+            by_satellite = defaultdict(lambda: {
+                'total': 0,
+                'correct': 0,
+                'confidences': []
+            })
+            
+            # Single pass through classifications
+            for c in self.agent_classifications:
+                sat_data = by_satellite[c.satellite_id]
+                sat_data['total'] += 1
+                if c.is_correct:
+                    sat_data['correct'] += 1
+                sat_data['confidences'].append(c.confidence)
+            
+            # Build final stats dictionary
+            stats = {}
+            for sat_id, data in by_satellite.items():
+                total = data['total']
+                correct = data['correct']
                 
-                if np.isnan(avg_confidence) or np.isinf(avg_confidence):
+                # Calculate average confidence with error handling
+                try:
+                    confidences = data['confidences']
+                    avg_confidence = (
+                        float(np.mean(confidences))
+                        if confidences
+                        else 0.0
+                    )
+                    
+                    if np.isnan(avg_confidence) or np.isinf(avg_confidence):
+                        logger.warning(
+                            f"Invalid average confidence for satellite '{sat_id}', using 0.0",
+                            extra={
+                                "satellite_id": sat_id,
+                                "classifications_count": total
+                            }
+                        )
+                        avg_confidence = 0.0
+                        
+                except (ValueError, TypeError) as e:
                     logger.warning(
-                        f"Invalid average confidence for satellite '{sat_id}', using 0.0",
-                        extra={
-                            "satellite_id": sat_id,
-                            "classifications_count": len(classifications)
-                        }
+                        f"Failed to calculate average confidence for satellite '{sat_id}': {e}",
+                        extra={"satellite_id": sat_id, "classifications_count": total}
                     )
                     avg_confidence = 0.0
-                    
-            except (ValueError, TypeError) as e:
-                logger.warning(
-                    f"Failed to calculate average confidence for satellite '{sat_id}': {e}",
-                    extra={"satellite_id": sat_id, "classifications_count": len(classifications)}
-                )
-                avg_confidence = 0.0
 
-            stats[sat_id] = {
-                "total_classifications": total,
-                "correct_classifications": correct,
-                "accuracy": correct / total if total > 0 else 0.0,
-                "avg_confidence": avg_confidence,
-            }
+                stats[sat_id] = {
+                    "total_classifications": total,
+                    "correct_classifications": correct,
+                    "accuracy": correct / total if total > 0 else 0.0,
+                    "avg_confidence": avg_confidence,
+                }
 
-        return stats
+            return stats
+        except (TypeError, ValueError) as e:
+            logger.exception("Error while calculating satellite statistics")
+            raise
 
 
     def get_confusion_matrix(self) -> Dict[str, Dict[str, int]]:
@@ -583,34 +596,6 @@ class AccuracyCollector:
             }
         except (TypeError, ValueError) as e:
             logger.exception("Failed to generate summary")
-            raise
-
-    def _find_ground_truth_fault(
-        self, sat_id: str, timestamp_s: float
-    ) -> Optional[str]:
-        """
-        Find the ground truth fault type for a satellite at a given timestamp.
-        """
-        if sat_id not in self._ground_truth_by_sat:
-            return None
-
-        events = self._ground_truth_by_sat[sat_id]
-        if not events:
-            return None
-
-        try:
-            idx = bisect.bisect_right(
-                events, timestamp_s, key=lambda e: e.timestamp_s
-            ) - 1
-
-            if idx < 0:
-                return None
-
-            return events[idx].expected_fault_type
-        except (TypeError, ValueError) as e:
-            logger.exception(
-                "Binary search failed while finding ground truth fault"
-            )
             raise
 
     def reset(self) -> None:
