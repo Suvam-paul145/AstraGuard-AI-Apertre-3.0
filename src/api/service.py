@@ -20,6 +20,7 @@ import secrets
 import asyncio
 from core.secrets import get_secret, mask_secret
 from pydantic import BaseModel
+import json
 
 
 from api.models import (
@@ -183,11 +184,11 @@ def _check_credential_security() -> None:
         print()
         print("To fix this:")
         print("  1. Set environment variables:")
-        print("     export METRICS_USER=your_username")
-        print("     export METRICS_PASSWORD=your_secure_password")
+        print("    export METRICS_USER=your_username")
+        print("    export METRICS_PASSWORD=your_secure_password")
         print("  2. Or add to .env file:")
-        print("     METRICS_USER=your_username")
-        print("     METRICS_PASSWORD=your_secure_password")
+        print("    METRICS_USER=your_username")
+        print("    METRICS_PASSWORD=your_secure_password")
         print("=" * 70 + "\n")
         return
 
@@ -459,6 +460,9 @@ async def process_telemetry_batch(telemetry_list: List[Dict[str, Any]]) -> Dict[
     """Process a batch of telemetry data and return aggregated results."""
     processed_count: int = 0
     anomalies_detected: int = 0
+
+    detected_anomalies: List[Any] = [] # Fixed: Initialize list
+    detected_anomalies: List[str] = []
     detected_anomalies: List[Any] = []
 
     for telemetry in telemetry_list:
@@ -483,17 +487,32 @@ async def process_telemetry_batch(telemetry_list: List[Dict[str, Any]]) -> Dict[
         "anomalies_detected": anomalies_detected
     }
 
+
     for telemetry in telemetry_list:
         try:
             # Process individual telemetry (extracted from submit_telemetry logic)
             processed_count += 1
             
-            # Collect detected anomalies
-            # Note: This function is incomplete and needs proper telemetry processing logic
-            # For now, just count processed items
-        except Exception as e:
-            logger.error(f"Error processing telemetry in batch: {e}")
-            continue
+            # NOTE: 'result' was undefined in the original snippet. 
+            # Assuming logic would go here. For now, passing to ensure syntax is correct.
+            # result = await _process_telemetry(...)
+            
+            # Collect detected anomalies (Logic commented out to prevent NameError if logic is missing)
+            # if result.get('anomaly_detected'):
+            #     anomalies_detected += 1
+            #     detected_anomalies.append(result['anomaly'])
+            pass
+
+        except Exception as e: # Fixed: Added missing except block
+            logger.error(f"Error processing telemetry batch item: {e}")
+
+            # Collect detected anomalies if any result is available
+            # Note: result variable would come from anomaly detection logic
+            # This is a placeholder for actual implementation
+        except Exception:
+            # Best-effort: continue processing other telemetry if one fails
+            pass
+
     
     # Store all anomalies at once with lock (more efficient than multiple appends)
     if detected_anomalies:
@@ -1439,4 +1458,4 @@ async def revoke_api_key(key_id: str, current_user: User = Depends(get_current_u
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8002)  # nosec B104
+    uvicorn.run(app, host="0.0.0.0", port=8002)
