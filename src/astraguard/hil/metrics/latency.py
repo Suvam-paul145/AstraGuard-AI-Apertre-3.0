@@ -2,6 +2,7 @@
 
 import time
 import csv
+import heapq
 import logging
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, asdict
@@ -230,18 +231,18 @@ class LatencyCollector:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
 
-            # Write in batches for better performance
+            # Write in batches for better performance using writerows
             batch_size = 1000
             for i in range(0, len(self.measurements), batch_size):
                 batch = self.measurements[i:i + batch_size]
-                for m in batch:
-                    writer.writerow(asdict(m))
+                writer.writerows(asdict(m) for m in batch)
+
 
         logger.info(f"Exported {len(self.measurements)} measurements to {filepath}")
 
     def get_summary(self) -> Dict[str, Any]:
         """
-        Get human-readable summary.
+        Get human-readable summary with optimized single-pass computation.
 
         Returns:
             Dict with high-level metrics summary
@@ -249,11 +250,53 @@ class LatencyCollector:
         if not self.measurements:
             return {"total_measurements": 0, "metrics": {}}
 
+        # Single-pass computation for both stats and stats_by_satellite
+        by_type = defaultdict(list)
+        by_satellite = defaultdict(lambda: defaultdict(list))
+
+        for m in self.measurements:
+            by_type[m.metric_type].append(m.duration_ms)
+            by_satellite[m.satellite_id][m.metric_type].append(m.duration_ms)
+
+        # Calculate stats by type
+        stats = {}
+        for metric_type, latencies in by_type.items():
+            if not latencies:
+                continue
+            sorted_latencies = sorted(latencies)
+            count = len(sorted_latencies)
+            stats[metric_type] = {
+                "count": count,
+                "mean_ms": sum(latencies) / count,
+                "p50_ms": sorted_latencies[count // 2],
+                "p95_ms": sorted_latencies[int(count * 0.95)],
+                "p99_ms": sorted_latencies[int(count * 0.99)],
+                "max_ms": max(latencies),
+                "min_ms": min(latencies),
+            }
+
+        # Calculate stats by satellite
+        stats_by_satellite = {}
+        for sat_id, metrics in by_satellite.items():
+            stats_by_satellite[sat_id] = {}
+            for metric_type, latencies in metrics.items():
+                if not latencies:
+                    continue
+                sorted_latencies = sorted(latencies)
+                count = len(sorted_latencies)
+                stats_by_satellite[sat_id][metric_type] = {
+                    "count": count,
+                    "mean_ms": sum(latencies) / count,
+                    "p50_ms": sorted_latencies[count // 2],
+                    "p95_ms": sorted_latencies[int(count * 0.95)],
+                    "max_ms": max(latencies),
+                }
+
         return {
             "total_measurements": len(self.measurements),
             "measurement_types": dict(self._measurement_log),
-            "stats": self.get_stats(),
-            "stats_by_satellite": self.get_stats_by_satellite(),
+            "stats": stats,
+            "stats_by_satellite": stats_by_satellite,
         }
 
     def reset(self) -> None:
@@ -263,7 +306,7 @@ class LatencyCollector:
 
     def _calculate_percentiles(self, latencies: List[float]) -> Dict[str, float]:
         """
-        Calculate percentiles using heap-based selection for better performance.
+        Calculate percentiles using single sort for better performance.
 
         Args:
             latencies: List of latency values
@@ -275,19 +318,18 @@ class LatencyCollector:
             return {"p50_ms": 0.0, "p95_ms": 0.0, "p99_ms": 0.0}
 
         count = len(latencies)
-
-        # Use heapq to find percentiles without full sort
-        def nth_smallest(n):
-            return heapq.nsmallest(n, latencies)[-1] if n <= count else latencies[-1]
-
-        p50_index = count // 2 + 1
-        p95_index = int(count * 0.95) + 1
-        p99_index = int(count * 0.99) + 1
+        
+        # Single sort is more efficient than multiple heapq.nsmallest calls
+        sorted_latencies = sorted(latencies)
+        
+        p50_index = min(count // 2, count - 1)
+        p95_index = min(int(count * 0.95), count - 1)
+        p99_index = min(int(count * 0.99), count - 1)
 
         return {
-            "p50_ms": nth_smallest(p50_index),
-            "p95_ms": nth_smallest(p95_index),
-            "p99_ms": nth_smallest(p99_index),
+            "p50_ms": sorted_latencies[p50_index],
+            "p95_ms": sorted_latencies[p95_index],
+            "p99_ms": sorted_latencies[p99_index],
         }
 
     def __len__(self) -> int:
