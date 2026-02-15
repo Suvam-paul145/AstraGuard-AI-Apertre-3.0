@@ -140,37 +140,20 @@ async def get_api_key(
         )
 
         # Check rate limit
-        try:
-            key_manager.check_rate_limit(api_key)
-            
-            # Log successful authentication
-            logger.info(
-                "Authentication successful",
-                extra={
-                    "request_id": request_id,
-                    "client_ip": client_ip,
-                    "path": request_path,
-                    "key_name": key.name,
-                    "permissions": list(key.permissions),
-                    "masked_key": masked_key
-                }
-            )
-            
-        except ValueError as rate_error:
-            logger.warning(
-                "Authentication failed: Rate limit exceeded",
-                extra={
-                    "request_id": request_id,
-                    "client_ip": client_ip,
-                    "path": request_path,
-                    "key_name": key.name,
-                    "masked_key": masked_key,
-                    "reason": "rate_limit_exceeded",
-                    "error": str(rate_error)
-                }
-            )
-            raise
+        key_manager.check_rate_limit(api_key)
 
+        # Log successful authentication
+        logger.info(
+            "Authentication successful",
+            extra={
+                "request_id": request_id,
+                "client_ip": client_ip,
+                "path": request_path,
+                "key_name": key.name,
+                "permissions": list(key.permissions),
+                "masked_key": masked_key
+            }
+        )
         return key
         
     except ValueError as e:
