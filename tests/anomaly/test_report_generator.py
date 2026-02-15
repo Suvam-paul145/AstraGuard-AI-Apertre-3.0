@@ -1171,8 +1171,8 @@ class TestBoundaryValues:
 
     def test_max_history_days_boundary(self):
         """Test maximum value for max_history_days."""
-        generator = AnomalyReportGenerator(max_history_days=365 * 100)  # 100 years
-        assert generator.max_history_days == 36500
+        generator = AnomalyReportGenerator(max_history_days=365 * 100)  # Approx. 100 years (ignoring leap years)
+        assert generator.max_history_days == 365 * 100
 
     def test_telemetry_with_very_large_numbers(self, generator):
         """Test telemetry data with very large numeric values."""
