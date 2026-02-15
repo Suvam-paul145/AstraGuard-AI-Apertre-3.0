@@ -140,10 +140,9 @@ def _check_credential_security() -> None:
     """
     global _USING_DEFAULT_CREDENTIALS
 
-    metrics_user: Optional[str] = get_secret("METRICS_USER")
-    metrics_password: Optional[str] = get_secret("METRICS_PASSWORD")
-    metrics_user = get_secret("metrics_user")
-    metrics_password = get_secret("metrics_password")
+    metrics_user: Optional[str] = get_secret("METRICS_USER") or get_secret("metrics_user")
+    metrics_password: Optional[str] = get_secret("METRICS_PASSWORD") or get_secret("metrics_password")
+
 
     # Check if credentials are set
     if not metrics_user or not metrics_password:
@@ -327,10 +326,9 @@ def get_current_username(credentials: HTTPBasicCredentials = Depends(security)) 
         HTTPException 401: Invalid credentials
         HTTPException 500: Credentials not configured
     """
-    correct_username = get_secret("METRICS_USER")
-    correct_password = get_secret("METRICS_PASSWORD")
-    correct_username = get_secret("metrics_user")
-    correct_password = get_secret("metrics_password")
+    correct_username = get_secret("METRICS_USER") or get_secret("metrics_user")
+    correct_password = get_secret("METRICS_PASSWORD") or get_secret("metrics_password")
+
 
     # Security: Require credentials to be explicitly set
     if not correct_username or not correct_password:
@@ -501,22 +499,15 @@ async def metrics(username: str = Depends(get_current_username)) -> Response:
     )
 
 
-@app.post("/api/v1/telemetry", response_model=AnomalyResponse, status_code=status.HTTP_200_OK)
-async def submit_telemetry(telemetry: TelemetryInput, current_user: User = Depends(require_operator)):
+async def _process_single_telemetry(telemetry: TelemetryInput, request_start: float) -> AnomalyResponse:
     """
-    Submit single telemetry point for anomaly detection.
-
-    Requires API key authentication with 'write' permission.
-
-    Returns:
-        AnomalyResponse with detection results and recommended actions
+    Internal function to process a single telemetry point without endpoint overhead.
+    Used by both single telemetry endpoint and batch processing.
     """
-    request_start = time.time()
-    
     # CHAOS INJECTION HOOK
     # 1. Network Latency Injection
     if check_chaos_injection("network_latency"):
-        time.sleep(2.0)  # Simulate 2s latency
+        await asyncio.sleep(2.0)  # Simulate 2s latency (non-blocking)
 
     # 2. Model Loader Failure Injection
     if check_chaos_injection("model_loader"):
@@ -557,6 +548,21 @@ async def submit_telemetry(telemetry: TelemetryInput, current_user: User = Depen
         ) from e
 
 
+@app.post("/api/v1/telemetry", response_model=AnomalyResponse, status_code=status.HTTP_200_OK)
+async def submit_telemetry(telemetry: TelemetryInput, current_user: User = Depends(require_operator)):
+    """
+    Submit single telemetry point for anomaly detection.
+
+    Requires API key authentication with 'write' permission.
+
+    Returns:
+        AnomalyResponse with detection results and recommended actions
+    """
+    request_start = time.time()
+    return await _process_single_telemetry(telemetry, request_start)
+
+
+
 async def _process_telemetry(telemetry: TelemetryInput, request_start: float) -> AnomalyResponse:
     """Internal telemetry processing logic."""
     # Type assertions for initialized globals
@@ -586,7 +592,7 @@ async def _process_telemetry(telemetry: TelemetryInput, request_start: float) ->
     # Classify fault type
     anomaly_type = classify(data)
 
-    # Predictive Maintenance: Add training data and check for predictions
+    # Predictive Maintenance: Add training data and check for predictions in parallel
     predictive_actions = []
     if predictive_engine:
         try:
@@ -603,16 +609,17 @@ async def _process_telemetry(telemetry: TelemetryInput, request_start: float) ->
                 failure_occurred=is_anomaly
             )
 
-            # Add training data
-            await predictive_engine.add_training_data(ts_data)
-
-            # Check for failure predictions
-            predictions = await predictive_engine.predict_failures(ts_data)
+            # Parallelize independent operations: add training data and predict failures
+            add_data_task = predictive_engine.add_training_data(ts_data)
+            predict_task = predictive_engine.predict_failures(ts_data)
+            
+            # Execute both operations concurrently
+            _, predictions = await asyncio.gather(add_data_task, predict_task)
 
             if predictions:
                 logger.info(f"Predictive maintenance: {len(predictions)} failure predictions made")
 
-                # Trigger preventive actions
+                # Trigger preventive actions (depends on predictions)
                 actions = await predictive_engine.trigger_preventive_actions(predictions)
                 predictive_actions = actions
 
@@ -624,6 +631,7 @@ async def _process_telemetry(telemetry: TelemetryInput, request_start: float) ->
         except Exception as e:
             logger.error(f"Predictive maintenance failed: {e}")
             # Don't fail the request if predictive maintenance fails
+
 
     # Get phase-aware decision if anomaly detected
     if is_anomaly:
@@ -719,8 +727,9 @@ async def submit_telemetry_batch(batch: TelemetryBatch, current_user: User = Dep
     Returns:
         BatchAnomalyResponse with aggregated results
     """
-    # Process telemetry in parallel using asyncio.gather for better performance
-    tasks = [submit_telemetry(telemetry) for telemetry in batch.telemetry]
+    # Process telemetry in parallel using internal function to avoid endpoint overhead
+    request_start = time.time()
+    tasks = [_process_single_telemetry(telemetry, request_start) for telemetry in batch.telemetry]
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
     # Handle any exceptions that occurred during processing
@@ -762,6 +771,7 @@ async def submit_telemetry_batch(batch: TelemetryBatch, current_user: User = Dep
     )
 
 
+
 @app.get("/api/v1/status", response_model=SystemStatus)
 async def get_status(api_key: APIKey = Depends(get_api_key)):
     """Get system health and status.
@@ -779,6 +789,7 @@ async def get_status(api_key: APIKey = Depends(get_api_key)):
         if "memory_store" in components:
             components["memory_store"]["status"] = "DEGRADED"
             components["memory_store"]["details"] = "ConnectionRefusedError: Chaos Injection"
+
 
     return SystemStatus(
         status="healthy" if all(
