@@ -548,3 +548,59 @@ class FeedbackSubmitResponse(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.now, description="Timestamp of the response")
     
     model_config = ConfigDict(json_encoders={datetime: lambda v: v.isoformat()})
+
+
+
+class FeedbackPendingItem(BaseModel):
+    """Individual pending feedback item."""
+    
+    feedback_id: str = Field(..., description="Unique feedback identifier")
+    fault_id: str = Field(..., description="Fault identifier")
+    anomaly_type: str = Field(..., description="Type of anomaly")
+    recovery_action: str = Field(..., description="Recovery action taken")
+    label: Optional[FeedbackLabel] = Field(None, description="Operator's assessment")
+    operator_notes: Optional[str] = Field(None, description="Operator notes")
+    mission_phase: str = Field(..., description="Mission phase")
+    confidence_score: float = Field(..., description="Confidence score")
+    submitted_by: str = Field(..., description="Username who submitted")
+    submitted_at: str = Field(..., description="Submission timestamp")
+    timestamp: str = Field(..., description="Original event timestamp")
+
+
+class FeedbackPendingResponse(BaseModel):
+    """Response model for pending feedback list."""
+    
+    count: int = Field(..., description="Number of pending feedback items")
+    pending_feedback: List[FeedbackPendingItem] = Field(..., description="List of pending feedback items")
+    timestamp: datetime = Field(default_factory=datetime.now, description="Response timestamp")
+    
+    model_config = ConfigDict(json_encoders={datetime: lambda v: v.isoformat()})
+
+
+
+class PrecisionMetrics(BaseModel):
+    """Analytics response for precision metrics."""
+    
+    precision: float = Field(..., ge=0.0, le=1.0, description="Overall precision score (0.0-1.0)")
+    total_feedback: int = Field(..., ge=0, description="Total number of feedback items analyzed")
+    correct_detections: int = Field(..., ge=0, description="Number of correct detections (true positives)")
+    incorrect_detections: int = Field(..., ge=0, description="Number of incorrect detections (false positives)")
+    by_anomaly_type: Dict[str, float] = Field(default_factory=dict, description="Precision by anomaly type")
+    by_mission_phase: Dict[str, float] = Field(default_factory=dict, description="Precision by mission phase")
+    timestamp: datetime = Field(default_factory=datetime.now, description="Calculation timestamp")
+    
+    model_config = ConfigDict(json_encoders={datetime: lambda v: v.isoformat()})
+
+
+class FalsePositivesMetrics(BaseModel):
+    """Analytics response for false positive metrics."""
+    
+    false_positive_rate: float = Field(..., ge=0.0, le=1.0, description="Overall false positive rate (0.0-1.0)")
+    total_feedback: int = Field(..., ge=0, description="Total number of feedback items analyzed")
+    false_positives_count: int = Field(..., ge=0, description="Number of false positive detections")
+    true_positives_count: int = Field(..., ge=0, description="Number of true positive detections")
+    by_anomaly_type: Dict[str, float] = Field(default_factory=dict, description="False positive rate by anomaly type")
+    by_mission_phase: Dict[str, float] = Field(default_factory=dict, description="False positive rate by mission phase")
+    timestamp: datetime = Field(default_factory=datetime.now, description="Calculation timestamp")
+    
+    model_config = ConfigDict(json_encoders={datetime: lambda v: v.isoformat()})
