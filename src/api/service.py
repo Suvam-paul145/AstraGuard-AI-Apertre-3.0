@@ -68,6 +68,7 @@ from anomaly_agent.phase_aware_handler import PhaseAwareAnomalyHandler
 from anomaly.anomaly_detector import detect_anomaly, load_model
 from classifier.fault_classifier import classify
 from core.component_health import get_health_monitor
+from core.diagnostics import SystemDiagnostics
 from memory_engine.memory_store import AdaptiveMemoryStore
 from security_engine.contracts import (
     TimeSeriesData,
@@ -741,6 +742,21 @@ async def metrics(username: str = Depends(get_current_username)) -> Response:
         content=get_metrics_text(), 
         media_type=get_metrics_content_type()
     )
+
+
+@app.get("/api/v1/system/diagnostics", status_code=status.HTTP_200_OK)
+async def get_system_diagnostics(
+    current_user: User = Depends(require_admin)
+):
+    """
+    Get detailed system diagnostics.
+    
+    Requires ADMIN privileges.
+    Returns:
+        System info, resource usage, network stats, process info, and application health.
+    """
+    diagnostics = SystemDiagnostics()
+    return diagnostics.run_full_diagnostics()
 
 
 @app.post("/api/v1/telemetry", response_model=AnomalyResponse, status_code=status.HTTP_200_OK)
