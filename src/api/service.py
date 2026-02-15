@@ -44,6 +44,8 @@ from api.models import (
     FeedbackSubmitRequest,
     FeedbackSubmitResponse,
     FeedbackLabel,
+    FeedbackPendingItem,
+    FeedbackPendingResponse,
 )
 from core.auth import (
     get_auth_manager,
@@ -1150,6 +1152,85 @@ async def submit_feedback(
             detail=f"Failed to submit feedback: {str(e)}"
         ) from e
 
+
+@app.get("/api/v1/feedback/pending", response_model=FeedbackPendingResponse, status_code=status.HTTP_200_OK)
+async def get_pending_feedback(
+    current_user: User = Depends(require_operator)
+) -> FeedbackPendingResponse:
+    """
+    Retrieve all pending feedback submissions awaiting review.
+    
+    This endpoint returns all feedback that has been submitted but not yet
+    processed or reviewed. Operators and admins can use this to review
+    pending feedback and take appropriate actions.
+    
+    Requires operator or admin role authentication.
+    
+    Args:
+        current_user: Authenticated user (operator or admin)
+    
+    Returns:
+        FeedbackPendingResponse with count and list of pending feedback items
+    
+    Raises:
+        HTTPException 401: Authentication required
+        HTTPException 403: Insufficient permissions
+        HTTPException 500: Internal server error during retrieval
+    """
+    try:
+        import json
+        from pathlib import Path
+        
+        feedback_file = Path("feedback_pending.json")
+        
+        # Load pending feedback
+        if feedback_file.exists():
+            try:
+                pending_data = json.loads(feedback_file.read_text())
+                if not isinstance(pending_data, list):
+                    pending_data = []
+            except json.JSONDecodeError:
+                logger.warning("feedback_pending.json is corrupted, returning empty list")
+                pending_data = []
+        else:
+            pending_data = []
+        
+        # Convert to response model
+        pending_items = []
+        for item in pending_data:
+            try:
+                pending_item = FeedbackPendingItem(
+                    feedback_id=item.get('feedback_id', ''),
+                    fault_id=item.get('fault_id', ''),
+                    anomaly_type=item.get('anomaly_type', ''),
+                    recovery_action=item.get('recovery_action', ''),
+                    label=item.get('label'),
+                    operator_notes=item.get('operator_notes'),
+                    mission_phase=item.get('mission_phase', ''),
+                    confidence_score=item.get('confidence_score', 1.0),
+                    submitted_by=item.get('submitted_by', 'unknown'),
+                    submitted_at=item.get('submitted_at', ''),
+                    timestamp=item.get('timestamp', '')
+                )
+                pending_items.append(pending_item)
+            except Exception as e:
+                logger.warning(f"Skipping invalid feedback item: {e}")
+                continue
+        
+        logger.info(f"Retrieved {len(pending_items)} pending feedback items for user {current_user.username}")
+        
+        return FeedbackPendingResponse(
+            count=len(pending_items),
+            pending_feedback=pending_items,
+            timestamp=datetime.now()
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to retrieve pending feedback: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve pending feedback: {str(e)}"
+        ) from e
 
 
 # Authentication endpoints

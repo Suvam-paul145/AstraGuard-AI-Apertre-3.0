@@ -547,3 +547,30 @@ class FeedbackSubmitResponse(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.now, description="Timestamp of the response")
     
     model_config = ConfigDict(json_encoders={datetime: lambda v: v.isoformat()})
+
+
+
+class FeedbackPendingItem(BaseModel):
+    """Individual pending feedback item."""
+    
+    feedback_id: str = Field(..., description="Unique feedback identifier")
+    fault_id: str = Field(..., description="Fault identifier")
+    anomaly_type: str = Field(..., description="Type of anomaly")
+    recovery_action: str = Field(..., description="Recovery action taken")
+    label: Optional[FeedbackLabel] = Field(None, description="Operator's assessment")
+    operator_notes: Optional[str] = Field(None, description="Operator notes")
+    mission_phase: str = Field(..., description="Mission phase")
+    confidence_score: float = Field(..., description="Confidence score")
+    submitted_by: str = Field(..., description="Username who submitted")
+    submitted_at: str = Field(..., description="Submission timestamp")
+    timestamp: str = Field(..., description="Original event timestamp")
+
+
+class FeedbackPendingResponse(BaseModel):
+    """Response model for pending feedback list."""
+    
+    count: int = Field(..., description="Number of pending feedback items")
+    pending_feedback: List[FeedbackPendingItem] = Field(..., description="List of pending feedback items")
+    timestamp: datetime = Field(default_factory=datetime.now, description="Response timestamp")
+    
+    model_config = ConfigDict(json_encoders={datetime: lambda v: v.isoformat()})
