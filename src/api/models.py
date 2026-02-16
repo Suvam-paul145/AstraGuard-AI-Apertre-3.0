@@ -460,7 +460,8 @@ class APIKeyCreateRequest(BaseModel):
             raise ValueError("At least one permission must be specified")
 
         # Use cached valid_permissions set (performance optimization)
-        invalid_permissions = set(p.lower() for p in v) - _VALID_PERMISSIONS
+        normalised = [p.lower() for p in v]
+        invalid_permissions = set(normalised) - _VALID_PERMISSIONS
 
         if invalid_permissions:
             logger.warning(
