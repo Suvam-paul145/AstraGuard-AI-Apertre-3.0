@@ -27,6 +27,10 @@ import uvicorn
 # Import centralized secrets management
 from core.secrets import get_secret
 
+# Import shutdown management
+from core.shutdown import get_shutdown_manager
+from core.request_tracking_middleware import RequestTrackingMiddleware
+
 # Import modules
 from backend.health_monitor import (
     router as health_router,
@@ -130,13 +134,18 @@ async def lifespan(app: FastAPI):
     """
     FastAPI lifespan context manager.
 
-    Startup: Initialize monitoring systems
-    Shutdown: Cleanup resources
+    Startup: Initialize monitoring systems and register signal handlers
+    Shutdown: Drain requests and cleanup resources gracefully
     """
     # ========== STARTUP ==========
     logger.info("🚀 AstraGuard AI Backend starting...")
 
     global health_monitor, fallback_manager, component_health, redis_client, distributed_coordinator, recovery_orchestrator
+    
+    # Get shutdown manager and register signal handlers
+    shutdown_manager = get_shutdown_manager()
+    shutdown_manager.register_signal_handlers()
+    logger.info("✅ Signal handlers registered (SIGTERM, SIGINT)")
 
     try:
         # Initialize component health monitor
@@ -215,24 +224,47 @@ async def lifespan(app: FastAPI):
         # Start recovery orchestrator background task (Issue #17)
         recovery_task = asyncio.create_task(recovery_orchestrator.run())
         logger.info("✅ Recovery Orchestrator started")
+        
+        # Register cleanup tasks with shutdown manager
+        async def close_redis():
+            if redis_client and redis_client.connected:
+                await redis_client.close()
+                logger.info("✅ Redis connection closed")
+        
+        async def shutdown_coordinator():
+            if distributed_coordinator:
+                await distributed_coordinator.shutdown()
+                logger.info("✅ Distributed Coordinator shutdown")
+        
+        def cancel_background_tasks():
+            health_task.cancel()
+            recovery_task.cancel()
+            logger.info("✅ Background tasks cancelled")
+        
+        shutdown_manager.register_cleanup_task(cancel_background_tasks, "background_tasks")
+        shutdown_manager.register_cleanup_task(shutdown_coordinator, "distributed_coordinator")
+        shutdown_manager.register_cleanup_task(close_redis, "redis_client")
 
         yield  # Application runs here
 
         # ========== SHUTDOWN ==========
         logger.info("🛑 AstraGuard AI Backend shutting down...")
-
-        # Shutdown distributed coordinator
-        if distributed_coordinator:
-            await distributed_coordinator.shutdown()
-            logger.info("✅ Distributed Coordinator shutdown")
-
-        # Close Redis connection
-        if redis_client and redis_client.connected:
-            await redis_client.close()
-            logger.info("✅ Redis connection closed")
-
-        health_task.cancel()
-        recovery_task.cancel()
+        
+        # Drain in-flight requests before cleanup
+        logger.info("⏳ Draining in-flight requests...")
+        await shutdown_manager.drain_requests()
+        
+        # Flush any pending metrics or logs
+        try:
+            logging.shutdown()
+            logger.info("✅ Logs flushed")
+        except Exception as e:
+            logger.error(f"⚠️  Error flushing logs: {e}")
+        
+        # Execute registered cleanup tasks
+        await shutdown_manager.execute_cleanup()
+        
+        # Additional cleanup for background tasks
         try:
             await health_task
         except asyncio.CancelledError:
@@ -242,8 +274,7 @@ async def lifespan(app: FastAPI):
         except asyncio.CancelledError:
             pass
 
-        logger.info("✅ Background tasks cancelled")
-        logger.info("✅ Cleanup complete")
+        logger.info("✅ Graceful shutdown complete")
 
     except Exception as e:
         logger.error(f"❌ Startup error: {e}", exc_info=True)
@@ -305,6 +336,9 @@ def create_app() -> FastAPI:
         version="1.0.0",
         lifespan=lifespan,
     )
+    
+    # Add request tracking middleware for graceful shutdown (before other middlewares)
+    app.add_middleware(RequestTrackingMiddleware)
 
     # Add CORS middleware for frontend
     app.add_middleware(

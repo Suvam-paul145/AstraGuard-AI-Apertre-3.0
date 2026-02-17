@@ -7,6 +7,7 @@ FastAPI-based REST API for telemetry ingestion and anomaly detection.
 import os
 import time
 import asyncio
+import logging
 from typing import List, Optional, Any, Union, Dict, TYPE_CHECKING
 from datetime import datetime, timedelta
 from collections import deque
@@ -22,6 +23,10 @@ import asyncio
 from core.secrets import get_secret, mask_secret
 from pydantic import BaseModel
 import json
+
+# Import graceful shutdown modules
+from core.shutdown import get_shutdown_manager
+from core.request_tracking_middleware import RequestTrackingMiddleware
 
 # Import TLS enforcement modules
 from core.tls_config import get_tls_config, is_tls_required
@@ -94,6 +99,14 @@ from core.restart import get_restart_manager
 from astraguard.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+# APM imports
+try:
+    from core.apm import get_apm_manager
+    from core.apm_middleware import APMMiddleware
+    APM_AVAILABLE = True
+except ImportError:
+    APM_AVAILABLE = False
 
 # Observability imports
 try:
@@ -236,9 +249,22 @@ def _check_credential_security() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Application lifespan manager."""
+    """Application lifespan manager with graceful shutdown support."""
     global redis_client, telemetry_limiter, api_limiter
     
+    # Get shutdown manager and register signal handlers
+    shutdown_manager = get_shutdown_manager()
+    shutdown_manager.register_signal_handlers()
+    logger.info("✅ Signal handlers registered (SIGTERM, SIGINT)")
+    
+    # Initialize database connection pool
+    try:
+        from src.db.database import init_pool
+        await init_pool()
+        print("[OK] Database connection pool initialized")
+    except Exception as e:
+        print(f"[WARNING] Connection pool initialization failed: {e}")
+        print("Falling back to direct database connections")
     from core.shutdown import get_shutdown_manager
     shutdown_manager = get_shutdown_manager()
 
@@ -258,8 +284,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         redis_client = RedisClient(redis_url=redis_url)
         await redis_client.connect()
         
-        # Register Redis cleanup
-        shutdown_manager.register_cleanup_task(redis_client.close, "redis_client")
+        # shutdown_manager removed by user, cleanup handled manually at end of lifespan
 
         # Get rate limit configurations
         rate_configs: Dict[str, Tuple[int, int]] = get_rate_limit_config()
@@ -298,12 +323,65 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         except Exception as e:
             logger.warning(f"Observability initialization failed: {e}")
 
-    # Register memory store cleanup if initialized
-    if memory_store:
-        shutdown_manager.register_cleanup_task(memory_store.save, "memory_store")
+    # Initialize APM (Application Performance Monitoring)
+    if APM_AVAILABLE:
+        try:
+            apm_manager = get_apm_manager()
+            apm_manager.initialize()
+            logger.info("APM initialized successfully")
+        except Exception as e:
+            logger.warning(f"APM initialization failed: {e}")
 
     yield
+    
+    # ========== SHUTDOWN ==========
+    logger.info("🛑 AstraGuard AI API shutting down...")
+    
+    # Drain in-flight requests before cleanup
+    logger.info("⏳ Draining in-flight requests...")
+    await shutdown_manager.drain_requests()
 
+    # Shutdown APM
+    if APM_AVAILABLE:
+        try:
+            apm_manager = get_apm_manager()
+            apm_manager.shutdown()
+            logger.info("✅ APM shutdown complete")
+        except Exception as e:
+            logger.warning(f"APM shutdown error: {e}")
+
+    # Cleanup memory store
+    if memory_store:
+        try:
+            await memory_store.save()
+            logger.info("✅ Memory store saved")
+        except Exception as e:
+            logger.error(f"Memory store save failed: {e}")
+
+    # Cleanup Redis
+    if redis_client:
+        try:
+            await redis_client.close()
+            logger.info("✅ Redis client closed")
+        except Exception as e:
+            logger.error(f"Redis client close failed: {e}")
+    
+    # Close database connection pool
+    try:
+        from src.db.database import close_pool
+        await close_pool()
+        print("[OK] Database connection pool closed")
+    except Exception as e:
+        print(f"[WARNING] Connection pool cleanup failed: {e}")
+    
+    # Flush logs
+    try:
+        logging.shutdown()
+        logger.info("✅ Logs flushed")
+    except Exception as e:
+        logger.error(f"⚠️  Error flushing logs: {e}")
+    
+    logger.info("✅ Graceful shutdown complete")
     # Cleanup via manager
     await shutdown_manager.execute_cleanup()
 
@@ -317,6 +395,9 @@ app = FastAPI(
     redoc_url="/redoc",
     lifespan=lifespan
 )
+
+# Add request tracking middleware first for graceful shutdown
+app.add_middleware(RequestTrackingMiddleware)
 
 # Add TLS enforcement middleware (early in the stack)
 # This ensures all internal service communication uses TLS
@@ -358,6 +439,10 @@ app.add_middleware(
     log_level=log_level,
     sample_rate=sample_rate,
 )
+
+# APM middleware (added after logging middleware so correlation IDs are available)
+if APM_AVAILABLE:
+    app.add_middleware(APMMiddleware)
 
 security = HTTPBasic()
 
@@ -501,6 +586,19 @@ async def process_telemetry_batch(telemetry_list: List[Dict[str, Any]]) -> Dict[
 # ============================================================================
 # API Endpoints
 # ============================================================================
+@app.get("/apm/status", tags=["monitoring"])
+async def apm_status() -> Dict[str, Any]:
+    """Get APM system status and current performance metrics.
+
+    Returns:
+        APM status including Apdex score, active transactions, and config.
+    """
+    if not APM_AVAILABLE:
+        return {"enabled": False, "message": "APM module not available"}
+    apm = get_apm_manager()
+    return apm.get_status()
+
+
 @app.get("/", response_model=HealthCheckResponse)
 async def root() -> HealthCheckResponse:
     """Root endpoint - health check."""

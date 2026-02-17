@@ -22,5 +22,6 @@ pydantic-settings
 opentelemetry-api
 opentelemetry-sdk
 opentelemetry-instrumentation-fastapi
+opentelemetry-exporter-otlp
 aiohttp
 structlog
