@@ -320,6 +320,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     yield
 
+<<<<<<< HEAD
     # Shutdown APM
     if APM_AVAILABLE:
         try:
@@ -340,6 +341,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             await redis_client.close()
         except Exception as e:
             logger.error(f"Redis client close failed: {e}")
+=======
+    # Cleanup
+    if memory_store:
+        await memory_store.save()
+    if redis_client:
+        await redis_client.close()
+>>>>>>> 8070d714c1cb092e10e1ad177c9d08a5d56721f4
     
     # Close database connection pool
     try:
