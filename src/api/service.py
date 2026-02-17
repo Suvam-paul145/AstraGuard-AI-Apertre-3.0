@@ -23,6 +23,10 @@ from core.secrets import get_secret, mask_secret
 from pydantic import BaseModel
 import json
 
+# Import graceful shutdown modules
+from core.shutdown import get_shutdown_manager
+from core.request_tracking_middleware import RequestTrackingMiddleware
+
 # Import TLS enforcement modules
 from core.tls_config import get_tls_config, is_tls_required
 from core.tls_enforcement import TLSMiddleware, TLSValidator, TLSEnforcementError
@@ -242,8 +246,13 @@ def _check_credential_security() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Application lifespan manager."""
+    """Application lifespan manager with graceful shutdown support."""
     global redis_client, telemetry_limiter, api_limiter
+    
+    # Get shutdown manager and register signal handlers
+    shutdown_manager = get_shutdown_manager()
+    shutdown_manager.register_signal_handlers()
+    logger.info("✅ Signal handlers registered (SIGTERM, SIGINT)")
     
     # Initialize database connection pool
     try:
@@ -319,25 +328,36 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             logger.warning(f"APM initialization failed: {e}")
 
     yield
+    
+    # ========== SHUTDOWN ==========
+    logger.info("🛑 AstraGuard AI API shutting down...")
+    
+    # Drain in-flight requests before cleanup
+    logger.info("⏳ Draining in-flight requests...")
+    await shutdown_manager.drain_requests()
 
     # Shutdown APM
     if APM_AVAILABLE:
         try:
             apm_manager = get_apm_manager()
             apm_manager.shutdown()
+            logger.info("✅ APM shutdown complete")
         except Exception as e:
             logger.warning(f"APM shutdown error: {e}")
 
-    # Cleanup
+    # Cleanup memory store
     if memory_store:
         try:
             await memory_store.save()
+            logger.info("✅ Memory store saved")
         except Exception as e:
             logger.error(f"Memory store save failed: {e}")
 
+    # Cleanup Redis
     if redis_client:
         try:
             await redis_client.close()
+            logger.info("✅ Redis client closed")
         except Exception as e:
             logger.error(f"Redis client close failed: {e}")
     
@@ -348,6 +368,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         print("[OK] Database connection pool closed")
     except Exception as e:
         print(f"[WARNING] Connection pool cleanup failed: {e}")
+    
+    # Flush logs
+    try:
+        import logging
+        logging.shutdown()
+        logger.info("✅ Logs flushed")
+    except Exception as e:
+        logger.error(f"⚠️  Error flushing logs: {e}")
+    
+    logger.info("✅ Graceful shutdown complete")
 
 
 # Initialize FastAPI app
@@ -359,6 +389,9 @@ app = FastAPI(
     redoc_url="/redoc",
     lifespan=lifespan
 )
+
+# Add request tracking middleware first for graceful shutdown
+app.add_middleware(RequestTrackingMiddleware)
 
 # Add TLS enforcement middleware (early in the stack)
 # This ensures all internal service communication uses TLS

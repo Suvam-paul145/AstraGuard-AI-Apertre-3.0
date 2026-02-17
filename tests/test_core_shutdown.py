@@ -64,3 +64,78 @@ async def test_shutdown_event(shutdown_manager):
     
     # Should not block now
     await asyncio.wait_for(shutdown_manager.wait_for_shutdown(), timeout=0.1)
+
+@pytest.mark.asyncio
+async def test_request_tracking(shutdown_manager):
+    """Test in-flight request tracking."""
+    assert shutdown_manager.get_in_flight_count() == 0
+    assert shutdown_manager.is_accepting_requests() == True
+    
+    # Track request start
+    await shutdown_manager.track_request_start()
+    assert shutdown_manager.get_in_flight_count() == 1
+    
+    # Track another request
+    await shutdown_manager.track_request_start()
+    assert shutdown_manager.get_in_flight_count() == 2
+    
+    # Track request end
+    await shutdown_manager.track_request_end()
+    assert shutdown_manager.get_in_flight_count() == 1
+    
+    # Track request end
+    await shutdown_manager.track_request_end()
+    assert shutdown_manager.get_in_flight_count() == 0
+
+@pytest.mark.asyncio
+async def test_drain_requests(shutdown_manager):
+    """Test request draining during shutdown."""
+    # Start some requests
+    await shutdown_manager.track_request_start()
+    await shutdown_manager.track_request_start()
+    assert shutdown_manager.get_in_flight_count() == 2
+    
+    # Start drain in background
+    drain_task = asyncio.create_task(shutdown_manager.drain_requests(timeout=2))
+    
+    # Wait a bit to ensure draining started
+    await asyncio.sleep(0.1)
+    
+    # Should not accept new requests
+    assert shutdown_manager.is_accepting_requests() == False
+    
+    # Trying to start a new request should fail
+    with pytest.raises(RuntimeError):
+        await shutdown_manager.track_request_start()
+    
+    # End existing requests
+    await shutdown_manager.track_request_end()
+    await shutdown_manager.track_request_end()
+    
+    # Wait for drain to complete
+    await drain_task
+    assert shutdown_manager.get_in_flight_count() == 0
+
+@pytest.mark.asyncio
+async def test_drain_requests_timeout(shutdown_manager):
+    """Test that drain_requests respects timeout."""
+    # Start a request that won't complete
+    await shutdown_manager.track_request_start()
+    
+    # Drain should timeout after 1 second
+    start_time = asyncio.get_event_loop().time()
+    await shutdown_manager.drain_requests(timeout=1)
+    elapsed = asyncio.get_event_loop().time() - start_time
+    
+    # Should have timed out (allowing some margin)
+    assert 0.9 <= elapsed <= 1.5
+    
+    # Request should still be in flight
+    assert shutdown_manager.get_in_flight_count() == 1
+
+@pytest.mark.asyncio
+async def test_get_shutdown_timeout(shutdown_manager):
+    """Test shutdown timeout configuration."""
+    timeout = shutdown_manager.get_shutdown_timeout()
+    # Default should be 30 or from environment
+    assert timeout > 0
