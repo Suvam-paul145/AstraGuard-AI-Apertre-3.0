@@ -7,6 +7,7 @@ FastAPI-based REST API for telemetry ingestion and anomaly detection.
 import os
 import time
 import asyncio
+import logging
 from typing import List, Optional, Any, Union, Dict, TYPE_CHECKING
 from datetime import datetime, timedelta
 from collections import deque
@@ -371,7 +372,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     
     # Flush logs
     try:
-        import logging
         logging.shutdown()
         logger.info("✅ Logs flushed")
     except Exception as e:

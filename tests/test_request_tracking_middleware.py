@@ -91,5 +91,3 @@ async def test_drain_requests_basic(shutdown_manager):
     # Should no longer be accepting requests
     assert not shutdown_manager.is_accepting_requests()
 
-
-
