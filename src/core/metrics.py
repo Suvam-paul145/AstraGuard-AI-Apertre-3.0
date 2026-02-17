@@ -233,65 +233,6 @@ MTTR_SECONDS = Histogram(
 )
 
 # ============================================================================
-# Database Connection Pool Metrics
-# ============================================================================
-
-DB_POOL_ACTIVE_CONNECTIONS = Gauge(
-    'astraguard_db_pool_active_connections',
-    'Number of currently active database connections',
-    registry=REGISTRY
-)
-
-DB_POOL_IDLE_CONNECTIONS = Gauge(
-    'astraguard_db_pool_idle_connections',
-    'Number of idle database connections in pool',
-    registry=REGISTRY
-)
-
-DB_POOL_TOTAL_CONNECTIONS = Gauge(
-    'astraguard_db_pool_total_connections',
-    'Total number of database connections (active + idle)',
-    registry=REGISTRY
-)
-
-DB_POOL_MAX_SIZE = Gauge(
-    'astraguard_db_pool_max_size',
-    'Maximum configured pool size',
-    registry=REGISTRY
-)
-
-DB_POOL_CONNECTIONS_CREATED_TOTAL = Counter(
-    'astraguard_db_pool_connections_created_total',
-    'Total database connections created since startup',
-    registry=REGISTRY
-)
-
-DB_POOL_ACQUISITIONS_TOTAL = Counter(
-    'astraguard_db_pool_acquisitions_total',
-    'Total connection acquisitions from pool',
-    registry=REGISTRY
-)
-
-DB_POOL_TIMEOUTS_TOTAL = Counter(
-    'astraguard_db_pool_timeouts_total',
-    'Total connection acquisition timeouts',
-    registry=REGISTRY
-)
-
-DB_POOL_ERRORS_TOTAL = Counter(
-    'astraguard_db_pool_errors_total',
-    'Total connection pool errors',
-    registry=REGISTRY
-)
-
-DB_POOL_ACQUISITION_LATENCY = Histogram(
-    'astraguard_db_pool_acquisition_latency_seconds',
-    'Time spent waiting for a connection from the pool',
-    buckets=(0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0, 30.0),
-    registry=REGISTRY
-)
-
-# ============================================================================
 # Helper Functions
 # ============================================================================
 

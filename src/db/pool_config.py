@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class PoolConfig:
     """Connection pool configuration parameters."""
-
+    
     max_size: int = 10
     min_size: int = 2
     connection_timeout: float = 30.0
@@ -24,9 +24,6 @@ class PoolConfig:
     retry_backoff: float = 0.5
     enable_pool: bool = True
     db_path: str = "data/contact_submissions.db"
-    max_lifetime: float = 3600.0
-    health_check_interval: float = 60.0
-    enable_wal_mode: bool = True
     
     @classmethod
     def from_file(cls, path: str = "config/database.json") -> "PoolConfig":

@@ -17,10 +17,3 @@ scrape_configs:
   - job_name: 'prometheus'
     static_configs:
       - targets: ['localhost:9090']
-
-# APM Alert Rules (evaluated by Prometheus Alertmanager)
-# These rules fire when APM thresholds are breached:
-# - apdex_low: Apdex score below 0.7 for 5 minutes
-# - high_slow_transactions: Slow transaction rate > 5/sec for 5 minutes
-rule_files:
-  # - "apm_alerts.yml"  # Uncomment when alertmanager is configured
