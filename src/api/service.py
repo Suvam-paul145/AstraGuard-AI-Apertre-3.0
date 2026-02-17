@@ -93,6 +93,14 @@ from astraguard.logging_config import get_logger
 
 logger = get_logger(__name__)
 
+# APM imports
+try:
+    from core.apm import get_apm_manager
+    from core.apm_middleware import APMMiddleware
+    APM_AVAILABLE = True
+except ImportError:
+    APM_AVAILABLE = False
+
 # Observability imports
 try:
     from astraguard.observability import (
@@ -262,8 +270,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         redis_client = RedisClient(redis_url=redis_url)
         await redis_client.connect()
         
-        # Register Redis cleanup
-        shutdown_manager.register_cleanup_task(redis_client.close, "redis_client")
+        # shutdown_manager removed by user, cleanup handled manually at end of lifespan
 
         # Get rate limit configurations
         rate_configs: Dict[str, Tuple[int, int]] = get_rate_limit_config()
@@ -302,17 +309,37 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         except Exception as e:
             logger.warning(f"Observability initialization failed: {e}")
 
-    # Register memory store cleanup if initialized
-    if memory_store:
-        shutdown_manager.register_cleanup_task(memory_store.save, "memory_store")
+    # Initialize APM (Application Performance Monitoring)
+    if APM_AVAILABLE:
+        try:
+            apm_manager = get_apm_manager()
+            apm_manager.initialize()
+            logger.info("APM initialized successfully")
+        except Exception as e:
+            logger.warning(f"APM initialization failed: {e}")
 
     yield
 
+    # Shutdown APM
+    if APM_AVAILABLE:
+        try:
+            apm_manager = get_apm_manager()
+            apm_manager.shutdown()
+        except Exception as e:
+            logger.warning(f"APM shutdown error: {e}")
+
     # Cleanup
     if memory_store:
-        await memory_store.save()
+        try:
+            await memory_store.save()
+        except Exception as e:
+            logger.error(f"Memory store save failed: {e}")
+
     if redis_client:
-        await redis_client.close()
+        try:
+            await redis_client.close()
+        except Exception as e:
+            logger.error(f"Redis client close failed: {e}")
     
     # Close database connection pool
     try:
@@ -373,6 +400,10 @@ app.add_middleware(
     log_level=log_level,
     sample_rate=sample_rate,
 )
+
+# APM middleware (added after logging middleware so correlation IDs are available)
+if APM_AVAILABLE:
+    app.add_middleware(APMMiddleware)
 
 security = HTTPBasic()
 
@@ -516,6 +547,19 @@ async def process_telemetry_batch(telemetry_list: List[Dict[str, Any]]) -> Dict[
 # ============================================================================
 # API Endpoints
 # ============================================================================
+@app.get("/apm/status", tags=["monitoring"])
+async def apm_status() -> Dict[str, Any]:
+    """Get APM system status and current performance metrics.
+
+    Returns:
+        APM status including Apdex score, active transactions, and config.
+    """
+    if not APM_AVAILABLE:
+        return {"enabled": False, "message": "APM module not available"}
+    apm = get_apm_manager()
+    return apm.get_status()
+
+
 @app.get("/", response_model=HealthCheckResponse)
 async def root() -> HealthCheckResponse:
     """Root endpoint - health check."""
