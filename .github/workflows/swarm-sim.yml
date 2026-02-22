@@ -11,8 +11,6 @@ on:
   pull_request:
     branches: [ main ]
 
-# Fix: Remove duplicate key and ensure cancel-in-progress is false
-# so long simulations finish even if new code is pushed.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
@@ -23,45 +21,38 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
-    # Fix: Define project name at Job Level to ensure isolation across all steps
     env:
       COMPOSE_PROJECT_NAME: swarm-test-${{ github.run_id }}
-    
-    # REMOVED: services block caused port conflicts with docker-compose
-    
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.13'
           cache: 'pip'
-      
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r src/config/requirements-ci.txt
           pip install pytest pytest-asyncio pytest-cov httpx docker
-      
+
       - name: Start Docker Daemon
         run: |
           sudo service docker start || true
           docker info
-      
+
       - name: Create Environment File
         run: |
           cp infra/docker/.env.example infra/docker/.env
-      
+
       - name: Start Swarm Constellation
-        # Env var inherited from job level, ensuring unique network names
         run: |
-          # Build and start the infrastructure
           docker compose -f infra/docker/docker-compose.swarm.yml up -d --build
 
-          
           echo "Waiting for Event Bus (RabbitMQ) to be healthy..."
-          # Loop until RabbitMQ reports 'healthy' or timeout after 60s
           timeout=60
           counter=0
           until [ "$(docker inspect --format='{{.State.Health.Status}}' swarm-${{ github.run_id }}-event-bus-1 2>/dev/null)" == "healthy" ]; do
@@ -75,13 +66,11 @@ jobs:
             counter=$((counter+2))
           done
           echo "Event Bus is healthy!"
-          
 
           echo "Waiting for services to be healthy..."
           sleep 10
-
           docker compose -f infra/docker/docker-compose.swarm.yml ps
-      
+
       - name: Wait for Agents Ready
         run: |
           python -c "
@@ -90,26 +79,22 @@ jobs:
           import time
           import subprocess
           import os
-          
+
           async def wait_agents():
-              # Environment variable is now automatically available
-              result = subprocess.run(['docker', 'compose', '-f', 'infra/docker/docker-compose.swarm.yml', 'ps', '--format', 'json'],
+              env = {'COMPOSE_PROJECT_NAME': f'swarm-{os.environ.get(\"GITHUB_RUN_ID\", \"local\")}'}
 
-                                      capture_output=True, text=True, env={**os.environ, **env})
+              result = subprocess.run(
+                  ['docker', 'compose', '-f', 'infra/docker/docker-compose.swarm.yml', 'ps', '--format', 'json'],
+                  capture_output=True, text=True, env={**os.environ, **env}
+              )
               print('Container status:', result.stdout)
-              
-              # Check if port is actually mapped
-              result = subprocess.run(['docker', 'compose', '-f', 'infra/docker/docker-compose.swarm.yml', 'port', 'agent-1', '8000'],
-                                      capture_output=True, text=True, env={**os.environ, **env})
 
-                                    capture_output=True, text=True)
-              print('Container status:', result.stdout)
-              
-              result = subprocess.run(['docker', 'compose', '-f', 'infra/docker/docker-compose.swarm.yml', 'port', 'agent-1', '8000'],
-                                    capture_output=True, text=True)
+              result = subprocess.run(
+                  ['docker', 'compose', '-f', 'infra/docker/docker-compose.swarm.yml', 'port', 'agent-1', '8000'],
+                  capture_output=True, text=True, env={**os.environ, **env}
+              )
+              print('Port mapping:', result.stdout)
 
-         print('Port mapping:', result.stdout)
-              
               for i in range(60):
                   try:
                       async with httpx.AsyncClient() as client:
@@ -121,45 +106,41 @@ jobs:
                       if i % 10 == 0:
                           print(f'Attempt {i}: {str(e)}')
                   await asyncio.sleep(1)
+
               return False
-          
+
           if asyncio.run(wait_agents()):
               print('Agents ready')
           else:
               print('Timeout waiting for agents')
-
-              # Show container logs before failing
-              env = {'COMPOSE_PROJECT_NAME': f'swarm-{os.environ.get("GITHUB_RUN_ID", "local")}'}
-              subprocess.run(['docker', 'compose', '-f', 'infra/docker/docker-compose.swarm.yml', 'logs', '--tail=50'], env={**os.environ, **env})
-
-              subprocess.run(['docker', 'compose', '-f', 'infra/docker/docker-compose.swarm.yml', 'logs', '--tail=50'])
-
+              subprocess.run(
+                  ['docker', 'compose', '-f', 'infra/docker/docker-compose.swarm.yml', 'logs', '--tail=50'],
+                  env={**os.environ, **{'COMPOSE_PROJECT_NAME': f'swarm-{os.environ.get(\"GITHUB_RUN_ID\", \"local\")}' }}
+              )
+              subprocess.run(
+                  ['docker', 'compose', '-f', 'infra/docker/docker-compose.swarm.yml', 'logs', '--tail=50']
+              )
               exit(1)
           "
-      
+
       - name: Run Swarm Tests
         run: |
           pytest tests/swarm/test_swarm_sim.py -v --tb=short --durations=10 2>&1 | tee test-output.txt
         timeout-minutes: 10
-      
+
       - name: Collect Telemetry
         if: always()
         run: |
           mkdir -p test-artifacts
-          
-          # Docker compose logs (uses global COMPOSE_PROJECT_NAME)
           docker compose -f infra/docker/docker-compose.swarm.yml logs > test-artifacts/docker-compose.log || true
-          
-          # Prometheus metrics
           curl -s http://localhost:9090/api/v1/query?query=up > test-artifacts/prometheus-metrics.json || true
-          
-          # Agent metrics
+
           for port in 8001 8002 8003 8004 8005; do
             curl -s http://localhost:$port/metrics > test-artifacts/agent-$port-metrics.txt || true
           done
-          
+
           cp test-output.txt test-artifacts/ || true
-      
+
       - name: Generate Coverage Report
         run: |
           pytest tests/swarm/ \
@@ -169,13 +150,13 @@ jobs:
             --cov-report=html:htmlcov \
             --cov-report=xml:coverage.xml \
             -v 2>&1 | tee coverage-output.txt || true
-      
+
       - name: Upload Coverage
         uses: codecov/codecov-action@v3
         with:
           file: ./coverage.xml
           fail_ci_if_error: false
-      
+
       - name: Upload Artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -183,13 +164,12 @@ jobs:
           name: swarm-test-artifacts
           path: test-artifacts/
           retention-days: 7
-      
+
       - name: Cleanup
         if: always()
         run: |
-          # Uses the correct project name to tear down the specific containers for this run
           docker compose -f infra/docker/docker-compose.swarm.yml down -v || true
-      
+
       - name: Test Summary
         if: always()
         run: |
@@ -207,44 +187,39 @@ jobs:
     name: Performance Validation
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    
-    # Fix: Unique project name for performance job to avoid collision with test job
+
     env:
       COMPOSE_PROJECT_NAME: swarm-perf-${{ github.run_id }}
-    
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.13'
           cache: 'pip'
-      
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r src/config/requirements-ci.txt
           pip install pytest pytest-asyncio pytest-benchmark httpx docker
-      
+
       - name: Start Docker Daemon
         run: sudo service docker start || true
-      
+
       - name: Run Performance Tests
         run: |
-          # Uses job-level COMPOSE_PROJECT_NAME automatically
           docker compose -f infra/docker/docker-compose.swarm.yml up -d --build
-          
-          # Wait for healthy stack (reusing logic)
           echo "Waiting for Event Bus to initialize..."
           sleep 15
-          
-          # Run timing tests
+
           python -c "
           import asyncio
           import time
           import httpx
-          
+
           async def test_latency():
               async with httpx.AsyncClient() as client:
                   times = []
@@ -255,17 +230,17 @@ jobs:
                           times.append((time.time() - start) * 1000)
                       except:
                           pass
-                  
+
                   if times:
                       avg = sum(times) / len(times)
                       max_time = max(times)
                       print(f'Latency: avg={avg:.1f}ms, max={max_time:.1f}ms')
                       assert avg < 100, f'Average latency {avg}ms exceeds 100ms'
                       assert max_time < 200, f'Max latency {max_time}ms exceeds 200ms'
-          
+
           asyncio.run(test_latency())
           "
-      
+
       - name: Cleanup
         if: always()
         run: |
@@ -275,10 +250,10 @@ jobs:
     name: Render Deployment Readiness
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
-    
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Validate Render Config
         run: |
           if [ -f render.yaml ]; then
@@ -288,7 +263,7 @@ jobs:
           else
             echo "⚠ render.yaml not found"
           fi
-      
+
       - name: Check Docker Image
         run: |
           if [ -f infra/docker/Dockerfile.swarm ]; then
