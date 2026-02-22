@@ -166,5 +166,5 @@ jobs:
     - name: Rollback on failure
       if: failure()
       run: |
-        echo "Deployment failed, rolling back..."
-        kubectl patch service astra-guard -n astraguard --type='json' -p='[{"op": "replace", "path": "/spec/selector/color", "value": "${{ steps.color.outputs.color == "blue" && "green" || "blue" }}"}]'
+        OLD_COLOR="${{ steps.color.outputs.color == 'blue' && 'green' || 'blue' }}"
+        helm uninstall astraguard-$OLD_COLOR --namespace astraguard || true
